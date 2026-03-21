@@ -1,0 +1,113 @@
+name: Validate Post Schema
+
+# Blocks PRs with invalid post documents from merging to main.
+# Nothing malformed ever reaches the publisher.
+# Ref: AC1 (schema validation), AC5 (timezone in publish_at), AC11 (copy sections),
+#      AC12 (ensures only valid docs reach main), AC-OQ2 (path structure), AC-OQ3 (multi-section)
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'brands/**/calendar/**/*.md'
+      - 'brands/**/brand.yaml'
+
+jobs:
+  validate-posts:
+    runs-on: ubuntu-latest
+    if: "contains(join(github.event.pull_request.changed_files.*.filename, ','), 'calendar/')"
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install pyyaml pydantic
+
+      - name: Validate changed post files
+        run: |
+          # Get list of changed .md files in calendar directories
+          CHANGED_FILES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD \
+            | grep 'brands/.*/calendar/.*\.md' || true)
+
+          if [ -z "$CHANGED_FILES" ]; then
+            echo "No post files changed."
+            exit 0
+          fi
+
+          echo "Validating post files:"
+          echo "$CHANGED_FILES"
+          echo "---"
+
+          # Run validator on each changed file
+          echo "$CHANGED_FILES" | xargs python scripts/validate-post.py
+
+      - name: Validate changed brand configs
+        run: |
+          CHANGED_BRANDS=$(git diff --name-only origin/${{ github.base_ref }}...HEAD \
+            | grep 'brands/.*/brand\.yaml' || true)
+
+          if [ -z "$CHANGED_BRANDS" ]; then
+            echo "No brand config files changed."
+            exit 0
+          fi
+
+          echo "Validating brand configs:"
+          echo "$CHANGED_BRANDS"
+          echo "---"
+
+          echo "$CHANGED_BRANDS" | xargs python scripts/validate-brand.py
+
+  validate-posts-fallback:
+    # Fallback job that validates all changed files when the file list isn't available
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install pyyaml pydantic
+
+      - name: Validate all changed post files
+        run: |
+          CHANGED_FILES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD \
+            | grep 'brands/.*/calendar/.*\.md' || true)
+
+          if [ -z "$CHANGED_FILES" ]; then
+            echo "No post files changed — nothing to validate."
+            exit 0
+          fi
+
+          echo "Files to validate:"
+          echo "$CHANGED_FILES"
+          echo "---"
+
+          FAILED=0
+          while IFS= read -r file; do
+            if [ -f "$file" ]; then
+              python scripts/validate-post.py "$file" || FAILED=1
+            fi
+          done <<< "$CHANGED_FILES"
+
+          if [ "$FAILED" -eq 1 ]; then
+            echo ""
+            echo "One or more post files failed validation."
+            echo "Fix the errors above and push again."
+            exit 1
+          fi
+
+          echo ""
+          echo "All post files passed validation."

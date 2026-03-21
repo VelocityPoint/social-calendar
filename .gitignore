@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+dist/
+build/
+
+# Environment and secrets
+.env
+*.env
+*.json.tmp
+
+# xurl config (written by workflow, not committed)
+.config/
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+
+# Publisher logs
+*.log

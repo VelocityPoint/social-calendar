@@ -1,0 +1,28 @@
+# Velocity Point brand configuration
+# Ref: AC8, AC16 (multi-brand)
+
+brand_name: "Velocity Point"
+avatar_id: null
+
+credentials:
+  linkedin: kv-velocitypoint-linkedin-token
+  x: kv-velocitypoint-x-config
+
+cadence:
+  linkedin:
+    posts_per_week: 2
+    preferred_times:
+      - "09:00"
+    timezone: "America/Los_Angeles"
+  x:
+    posts_per_week: 3
+    preferred_times:
+      - "09:00"
+      - "14:00"
+    timezone: "America/Los_Angeles"
+
+pillars:
+  - "AI-enabled business automation"
+  - "Small business AI"
+  - "Velocity Point products and services"
+  - "Behind the build"

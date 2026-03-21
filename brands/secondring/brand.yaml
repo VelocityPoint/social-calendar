@@ -1,0 +1,69 @@
+# Second Ring brand configuration
+# Ref: AC8 (brand config schema), AC14 (Instagram shares Facebook credential)
+#
+# IMPORTANT: credentials values are Key Vault secret NAMES, not raw tokens.
+# The publisher resolves these names against Azure Key Vault or environment variables.
+
+brand_name: "Second Ring"
+avatar_id: null  # HeyGen avatar ID (Phase 2 — set when HeyGen integration is ready)
+
+# Platform credentials: Key Vault secret name for each platform
+# Instagram intentionally references the same secret as Facebook (AC14)
+credentials:
+  facebook: kv-secondring-facebook-token
+  instagram: kv-secondring-facebook-token   # Shared Meta app creds (AC14)
+  linkedin: kv-secondring-linkedin-token
+  gbp: kv-secondring-gbp-credentials
+  x: kv-secondring-x-config               # xurl config JSON
+
+# Posting cadence per platform
+cadence:
+  linkedin:
+    posts_per_week: 3
+    preferred_times:
+      - "09:00"
+      - "17:00"
+    timezone: "America/Los_Angeles"
+  facebook:
+    posts_per_week: 5
+    preferred_times:
+      - "08:00"
+      - "12:00"
+      - "18:00"
+    timezone: "America/Los_Angeles"
+  instagram:
+    posts_per_week: 3
+    preferred_times:
+      - "10:00"
+      - "19:00"
+    timezone: "America/Los_Angeles"
+  x:
+    posts_per_week: 7
+    preferred_times:
+      - "08:00"
+      - "12:00"
+      - "17:00"
+    timezone: "America/Los_Angeles"
+  gbp:
+    posts_per_week: 2
+    preferred_times:
+      - "09:00"
+    timezone: "America/Los_Angeles"
+
+# Content pillars — topics this brand focuses on
+pillars:
+  - "AI-powered answering service"
+  - "Never miss a customer call"
+  - "Small business growth"
+  - "Service business tips"
+  - "Second Ring features and updates"
+  - "Customer success stories"
+
+# Brand voice guidelines (used by content generation in Phase 2)
+voice:
+  tone: "Professional, approachable, and confident"
+  avoid:
+    - "corporate jargon"
+    - "overpromising"
+    - "exclamation points in every sentence"
+  cta_style: "Direct — tell them what to do next"
