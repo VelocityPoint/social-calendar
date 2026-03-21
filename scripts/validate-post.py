@@ -132,7 +132,8 @@ def validate_file(file_path: str) -> list[str]:
 
     # Validate publish_at (AC1, AC5)
     if "publish_at" in frontmatter and frontmatter["publish_at"]:
-        publish_at_str = str(frontmatter["publish_at"])
+        val = frontmatter["publish_at"]
+        publish_at_str = val.isoformat() if hasattr(val, "isoformat") else str(val)
         if not PUBLISH_AT_PATTERN.match(publish_at_str):
             errors.append(
                 f"Error: publish_at must include timezone offset (got: {publish_at_str}). "
