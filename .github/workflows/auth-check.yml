@@ -1,0 +1,71 @@
+name: Weekly Auth Check
+
+# AC2: Weekly credential health check across all brands and platforms.
+# Creates a GitHub issue if any token is within 7 days of expiry or fails auth.
+# Ref: AC2 (auth_check), AC13 (token refresh warning)
+
+on:
+  schedule:
+    - cron: '0 9 * * 1'  # Monday 09:00 UTC
+  workflow_dispatch:
+
+jobs:
+  auth-check:
+    runs-on: ubuntu-latest
+    environment: production
+
+    permissions:
+      contents: read
+      issues: write
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure Login (OIDC)
+        if: vars.AZURE_CLIENT_ID != ''
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r publisher/requirements.txt
+
+      - name: Run auth check (all brands)
+        id: auth_check
+        run: |
+          python -m publisher.publisher --auth-check --brand all
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          AZURE_KEY_VAULT_NAME: ${{ vars.AZURE_KEY_VAULT_NAME }}
+          FACEBOOK_PAGE_ID: ${{ vars.FACEBOOK_PAGE_ID }}
+          LINKEDIN_AUTHOR_URN: ${{ vars.LINKEDIN_AUTHOR_URN }}
+          GBP_LOCATION_NAME: ${{ vars.GBP_LOCATION_NAME }}
+          INSTAGRAM_USER_ID: ${{ vars.INSTAGRAM_USER_ID }}
+        continue-on-error: true
+
+      - name: Create issue on auth failure
+        if: steps.auth_check.outcome == 'failure'
+        run: |
+          gh issue create \
+            --repo "${{ github.repository }}" \
+            --title "[Auth Check Failed] Weekly credential check $(date -u +%Y-%m-%d)" \
+            --body "Weekly auth check failed. One or more platform credentials are invalid or expired.
+
+          Run details: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+          Check the workflow logs for which platform(s) failed.
+          Labels: credential-failure, agent:bob" \
+            --label "credential-failure" \
+            --label "agent:bob"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

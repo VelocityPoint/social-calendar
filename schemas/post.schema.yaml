@@ -1,0 +1,134 @@
+# Post Document Schema
+# Used by scripts/validate-post.py (AC1) and validate-pr.yml workflow
+# Every field is documented with type, required/optional, and constraints
+
+version: "1.0"
+
+fields:
+  id:
+    type: string
+    required: true
+    description: "Unique post identifier. Format: YYYY-MM-DD-<slug>. Example: 2026-04-01-ladder-tips"
+    pattern: "^\\d{4}-\\d{2}-\\d{2}-.+$"
+
+  publish_at:
+    type: string
+    required: true
+    description: "ISO 8601 datetime with timezone offset. Example: 2026-04-01T09:00:00-07:00 or 2026-04-01T16:00:00Z"
+    pattern: "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}([+-]\\d{2}:\\d{2}|Z)$"
+    notes:
+      - "Must include timezone offset. Bare datetime (no offset) fails validation per AC5."
+      - "UTC recommended for consistency."
+
+  platforms:
+    type: list
+    required: true
+    description: "Non-empty list of target platforms."
+    items:
+      type: string
+      enum: [facebook, linkedin, gbp, x, instagram]
+    min_items: 1
+
+  status:
+    type: string
+    required: true
+    description: "Current lifecycle status of the post."
+    enum: [draft, scheduled, published, failed, deferred, video-pending]
+    notes:
+      - "draft: not merged to main (validate-pr.yml blocks drafts from reaching publisher)"
+      - "scheduled: merged to main, awaiting publish_at"
+      - "published: all targeted platforms confirmed; post_ids populated"
+      - "failed: all retries exhausted; GitHub issue created per AC7"
+      - "deferred: rate-limited; no issue; retried next run per AC-OQ6"
+      - "video-pending: HeyGen not complete (Phase 2)"
+
+  brand:
+    type: string
+    required: true
+    description: "Brand slug matching a directory under brands/. Example: secondring"
+    pattern: "^[a-z][a-z0-9-]*$"
+
+  author:
+    type: string
+    required: false
+    description: "Author identifier (GitHub username or agent name). Informational only."
+
+  campaign:
+    type: string
+    required: false
+    description: "Campaign slug from campaigns/ directory. Optional."
+
+  tags:
+    type: list
+    required: false
+    description: "Content tags for filtering and reporting."
+    items:
+      type: string
+
+  # Written by publisher after successful publish (AC6)
+  published_at:
+    type: string
+    required: false
+    description: "ISO 8601 UTC timestamp written by publisher after successful publish."
+    pattern: "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$"
+    notes:
+      - "Set by publisher — do not set manually."
+
+  post_ids:
+    type: object
+    required: false
+    description: "Platform post IDs written by publisher. One key per published platform."
+    notes:
+      - "Set by publisher — do not set manually."
+    example:
+      linkedin: "urn:li:share:7123456789"
+      facebook: "1234567890_0987654321"
+      x: "1778901234567890123"
+      gbp: "accounts/123/locations/456/localPosts/789"
+      instagram: "17891234567890123"
+
+  creative:
+    type: list
+    required: false
+    description: "Optional list of creative assets (images, videos)."
+    items:
+      fields:
+        type:
+          type: string
+          required: true
+          enum: [image, video, heygen]
+        path:
+          type: string
+          required: false
+          description: "Relative path to asset file under brands/<brand>/assets/"
+        url:
+          type: string
+          required: false
+          description: "Public URL for the asset (used after upload or for HeyGen output)."
+        video_url:
+          type: string
+          required: false
+          description: "Azure Blob URL for rendered video. Written by publisher (Phase 2)."
+        platforms:
+          type: list
+          required: false
+          description: "Override: only attach this creative to these platforms. Omit to use on all platforms."
+          items:
+            type: string
+            enum: [facebook, linkedin, gbp, x, instagram]
+
+# Character limits per platform (enforced by validate-post.py)
+platform_limits:
+  linkedin: 3000
+  x: 280
+  gbp: 1500
+  facebook: 2200
+  instagram: 2200
+
+# Copy section headers (extracted by publisher per AC11, OQ3)
+copy_section_headers:
+  linkedin: "LinkedIn Version"
+  facebook: "Facebook Version"
+  x: "X Version"
+  gbp: "Google Business Profile Version"
+  instagram: "Instagram Version"
