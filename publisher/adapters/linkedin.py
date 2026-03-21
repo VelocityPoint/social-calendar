@@ -30,13 +30,15 @@ class LinkedInAdapter(BaseAdapter):
     platform = "linkedin"
 
     def _get_token(self) -> str:
+        """Load LinkedIn OAuth token, refreshing if within 24h of expiry (AC13)."""
         kv_name = self.brand.credentials.get_kv_secret_name("linkedin")
         if not kv_name:
             raise PermanentError("No linkedin credential configured in brand.yaml")
-        token = self._get_credential(kv_name)
-        if not token:
+        cred_raw = self._get_credential(kv_name)
+        if not cred_raw:
             raise PermanentError(f"Could not retrieve linkedin token: {kv_name}")
-        return token
+        # AC13: check expiry and refresh if within 24h window
+        return self._check_and_refresh_token(cred_raw, kv_name)
 
     def _get_author_urn(self) -> str:
         """LinkedIn author URN: urn:li:organization:{id} or urn:li:person:{id}."""

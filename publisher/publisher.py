@@ -180,18 +180,28 @@ def run_publisher(brand_slug: str, dry_run: bool = False) -> dict:
                 post_results[platform] = platform_post_id
                 adapter.increment_rate_limit()
                 adapter.save_rate_limit_state()
+                # Crash recovery (MEDIUM-3): write each successful platform post_id back to
+                # frontmatter immediately so a mid-run crash does not lose completed platforms.
+                # The next run's is_published_to() check will skip already-published platforms.
+                write_post_status(
+                    file_path,
+                    post.id,
+                    status="deferred",  # tentative — final status written below after all platforms
+                    post_ids={platform: platform_post_id},
+                )
             else:
                 any_failed = True
 
-        # Update frontmatter status (AC6)
-        if post_results and not dry_run:
+        # Update frontmatter status (AC6): write final status regardless of whether
+        # any platforms succeeded (ensures exhausted-retry posts are marked "failed").
+        if not dry_run and (post_results or any_failed or any_deferred):
             # Determine new status
             if any_failed:
                 new_status = "failed"
             elif any_deferred:
                 new_status = "deferred"
             else:
-                # Check if all platforms are now published
+                # Check if all platforms are now published (including previously written ones)
                 all_published = all(
                     post.is_published_to(p) or p in post_results
                     for p in post.platforms
@@ -206,7 +216,7 @@ def run_publisher(brand_slug: str, dry_run: bool = False) -> dict:
                 file_path,
                 post.id,
                 status=new_status,
-                post_ids=post_results,
+                post_ids=post_results if post_results else None,
                 published_at=published_at,
             )
 

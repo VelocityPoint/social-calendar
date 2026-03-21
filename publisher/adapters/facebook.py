@@ -28,14 +28,15 @@ class FacebookAdapter(BaseAdapter):
     platform = "facebook"
 
     def _get_page_access_token(self) -> str:
-        """Load Facebook page access token from Key Vault or env."""
+        """Load Facebook page access token from Key Vault or env, refreshing if near expiry (AC13)."""
         kv_name = self.brand.credentials.get_kv_secret_name("facebook")
         if not kv_name:
             raise PermanentError("No facebook credential configured in brand.yaml", status_code=401)
-        token = self._get_credential(kv_name)
-        if not token:
+        cred_raw = self._get_credential(kv_name)
+        if not cred_raw:
             raise PermanentError(f"Could not retrieve facebook token from secret: {kv_name}", status_code=401)
-        return token
+        # AC13: check expiry and refresh if within 24h window
+        return self._check_and_refresh_token(cred_raw, kv_name)
 
     def auth_check(self) -> bool:
         """AC2: GET /{page-id} to verify token."""
@@ -44,7 +45,8 @@ class FacebookAdapter(BaseAdapter):
             page_id = self._get_page_id()
             resp = requests.get(
                 f"{GRAPH_API_BASE}/{page_id}",
-                params={"access_token": token, "fields": "id,name"},
+                params={"fields": "id,name"},
+                headers={"Authorization": f"Bearer {token}"},
                 timeout=10,
             )
             if resp.status_code == 200:
@@ -96,7 +98,8 @@ class FacebookAdapter(BaseAdapter):
     def _publish_text(self, token: str, page_id: str, message: str) -> str:
         resp = requests.post(
             f"{GRAPH_API_BASE}/{page_id}/feed",
-            json={"message": message, "access_token": token},
+            json={"message": message},
+            headers={"Authorization": f"Bearer {token}"},
             timeout=30,
         )
         self._raise_for_status(resp)
@@ -107,7 +110,8 @@ class FacebookAdapter(BaseAdapter):
         with open(image_path, "rb") as f:
             resp = requests.post(
                 f"{GRAPH_API_BASE}/{page_id}/photos",
-                data={"message": message, "access_token": token},
+                data={"message": message},
+                headers={"Authorization": f"Bearer {token}"},
                 files={"source": f},
                 timeout=60,
             )

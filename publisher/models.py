@@ -11,9 +11,9 @@ from __future__ import annotations
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, ClassVar, Optional
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, PrivateAttr, field_validator
 
 
 VALID_PLATFORMS = {"facebook", "linkedin", "gbp", "x", "instagram"}
@@ -50,8 +50,8 @@ class Post(BaseModel):
     # Creative assets
     creative: Optional[list[CreativeAsset]] = None
 
-    # Internal: file path (not in frontmatter)
-    _file_path: Optional[str] = None
+    # Internal: file path (not in frontmatter — Pydantic PrivateAttr, not a model field)
+    _file_path: str = PrivateAttr(default=None)
 
     @field_validator("platforms")
     @classmethod
@@ -79,9 +79,9 @@ class Post(BaseModel):
         return dt.astimezone(timezone.utc)
 
     def is_ready_to_publish(self) -> bool:
-        """Returns True if publish_at <= now UTC and status is 'scheduled'."""
+        """Returns True if publish_at <= now UTC and status is 'scheduled' or 'deferred'."""
         from datetime import timezone
-        if self.status != "scheduled":
+        if self.status not in ("scheduled", "deferred"):
             return False
         return self.get_publish_at_utc() <= datetime.now(timezone.utc)
 
@@ -137,8 +137,8 @@ class RateLimitState(BaseModel):
     limit: int
     window_seconds: int
 
-    # Platform defaults (conservative per AC-OQ6)
-    DEFAULTS: dict[str, dict] = {
+    # Platform defaults (conservative per AC-OQ6) — ClassVar: not a model field
+    DEFAULTS: ClassVar[dict[str, dict]] = {
         "linkedin":  {"limit": 100,  "window_seconds": 86400},   # 100/day
         "facebook":  {"limit": 200,  "window_seconds": 3600},    # 200/hour
         "instagram": {"limit": 50,   "window_seconds": 86400},   # 50/24h

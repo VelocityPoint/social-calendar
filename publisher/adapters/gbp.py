@@ -46,6 +46,12 @@ class GBPAdapter(BaseAdapter):
             return {"access_token": cred_str}
 
     def _get_access_token(self) -> str:
+        """Load GBP access token, refreshing if within 24h of expiry (AC13)."""
+        kv_name = self.brand.credentials.get_kv_secret_name("gbp")
+        cred_raw = self._get_credential(kv_name) if kv_name else None
+        if cred_raw:
+            # AC13: check expiry and refresh if within 24h window
+            return self._check_and_refresh_token(cred_raw, kv_name)
         creds = self._get_credentials()
         return creds.get("access_token", "")
 

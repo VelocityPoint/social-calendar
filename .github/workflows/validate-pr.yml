@@ -15,7 +15,9 @@ on:
 jobs:
   validate-posts:
     runs-on: ubuntu-latest
-    if: "contains(join(github.event.pull_request.changed_files.*.filename, ','), 'calendar/')"
+    # Note: github.event.pull_request.changed_files does not exist in the Actions event payload.
+    # The workflow trigger already filters on paths: 'brands/**/calendar/**/*.md', so this job
+    # runs only when calendar post files are present in the PR. No additional if: condition needed.
 
     steps:
       - uses: actions/checkout@v4

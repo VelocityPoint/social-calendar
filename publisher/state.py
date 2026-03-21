@@ -145,10 +145,10 @@ def is_committed_on_main(file_path: Path, repo_root: Path) -> bool:
             logger.info(f"[SKIPPED] {file_path.name}: not found on main branch")
         return on_main
     except Exception as e:
-        logger.warning(f"[AC12] Cannot check main branch for {file_path}: {e}")
-        # In GH Actions the checkout has full history (fetch-depth: 0) so this should succeed.
-        # On failure, fail open (allow publish) to avoid silent silencing.
-        return True
+        # Fail closed: an unverifiable gate must block, not pass.
+        # In GH Actions the checkout has full history (fetch-depth: 0) so this should not happen.
+        logger.error(f"[AC12] Exception checking main branch for {file_path}: {e} — blocking publish")
+        return False
 
 
 def scan_posts_for_brand(brand_dir: Path, repo_root: Path) -> list[Post]:
@@ -192,13 +192,13 @@ def scan_posts_for_brand(brand_dir: Path, repo_root: Path) -> list[Post]:
             if post is None:
                 continue
 
-            # Only process 'scheduled' posts
-            if post.status != "scheduled":
+            # Process 'scheduled' and 'deferred' posts (AC-OQ4: deferred posts retry next run)
+            if post.status not in ("scheduled", "deferred"):
                 logger.debug(f"[SKIP] {post.id}: status={post.status}")
                 continue
 
             posts.append(post)
-            logger.debug(f"[QUEUED] {post.id}: publish_at={post.publish_at}")
+            logger.debug(f"[QUEUED] {post.id}: status={post.status} publish_at={post.publish_at}")
 
-    logger.info(f"[SCAN] Brand {brand_dir.name}: {len(posts)} scheduled post(s) in queue")
+    logger.info(f"[SCAN] Brand {brand_dir.name}: {len(posts)} scheduled/deferred post(s) in queue")
     return posts

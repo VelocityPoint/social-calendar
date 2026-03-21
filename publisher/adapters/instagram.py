@@ -60,6 +60,10 @@ class InstagramAdapter(BaseAdapter):
         if not ig_user_id or not ig_token:
             raise PermanentError("Instagram user_id or access_token not found in facebook credential")
 
+        # AC13: check expiry and refresh if within 24h window.
+        # Instagram tokens are long-lived; refresh uses the same facebook KV secret.
+        ig_token = self._check_and_refresh_token(cred_json, kv_name)
+
         return ig_user_id, ig_token
 
     def auth_check(self) -> bool:
@@ -68,7 +72,8 @@ class InstagramAdapter(BaseAdapter):
             ig_user_id, ig_token = self._get_credentials()
             resp = requests.get(
                 f"{GRAPH_API_BASE}/{ig_user_id}",
-                params={"fields": "id,username", "access_token": ig_token},
+                params={"fields": "id,username"},
+                headers={"Authorization": f"Bearer {ig_token}"},
                 timeout=10,
             )
             if resp.status_code == 200:
@@ -134,7 +139,8 @@ class InstagramAdapter(BaseAdapter):
     def _create_image_container(self, user_id: str, token: str, caption: str, image_url: str) -> str:
         resp = requests.post(
             f"{GRAPH_API_BASE}/{user_id}/media",
-            json={"image_url": image_url, "caption": caption, "access_token": token},
+            json={"image_url": image_url, "caption": caption},
+            headers={"Authorization": f"Bearer {token}"},
             timeout=30,
         )
         self._raise_for_status(resp)
@@ -150,7 +156,8 @@ class InstagramAdapter(BaseAdapter):
     def _publish_container(self, user_id: str, token: str, media_id: str) -> str:
         resp = requests.post(
             f"{GRAPH_API_BASE}/{user_id}/media_publish",
-            json={"creation_id": media_id, "access_token": token},
+            json={"creation_id": media_id},
+            headers={"Authorization": f"Bearer {token}"},
             timeout=30,
         )
         self._raise_for_status(resp)
