@@ -79,6 +79,32 @@ jobs:
       - name: Install dependencies
         run: pip install -r publisher/requirements.txt
 
+      - name: Validate GHL CLI scripts (dry-run self-tests)
+        run: |
+          # Verify all 4 CLI scripts load and --help exits cleanly
+          python scripts/ghl_social_list_accounts.py --help > /dev/null
+          python scripts/ghl_social_list_posts.py --help > /dev/null
+          python scripts/ghl_social_create_post.py --help > /dev/null
+          python scripts/ghl_social_delete_post.py --help > /dev/null
+
+          # Dry-run create: confirm payload preview exits 0, no API call
+          python scripts/ghl_social_create_post.py \
+            --account-id dry-run-account \
+            --content "Dry-run test post — no live API call" \
+            --schedule-at "2026-04-01T10:00:00Z" \
+            --location-id "dry-run-location" \
+            --api-key "dry-run-key" \
+            --dry-run
+
+          # Dry-run delete: confirm preview exits 0, no API call
+          python scripts/ghl_social_delete_post.py \
+            --post-id "dry-run-post-id" \
+            --location-id "dry-run-location" \
+            --api-key "dry-run-key" \
+            --dry-run
+
+          echo "GHL CLI dry-run validation passed."
+
       - name: Run Publisher (GHL Social Planner)
         run: |
           python scripts/publish_posts.py \

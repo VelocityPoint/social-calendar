@@ -1,118 +1,167 @@
 #!/usr/bin/env python3
 """
-scripts/ghl_social_delete_post.py -- Delete a post from GHL Social Planner.
+ghl_social_delete_post.py -- Delete a GHL Social Planner post
+
+Deletes a post by ID from GHL Social Planner. All deletions require --dry-run
+unless explicitly confirmed (no --dry-run flag + interactive confirmation).
 
 Usage:
-    python scripts/ghl_social_delete_post.py --post-id <id> [--dry-run] [--yes]
-      [--location-id X] [--api-key X]
+    python scripts/ghl_social_delete_post.py --post-id POST_ID --dry-run
 
-Ref: AC5 (delete post)
+Arguments:
+    --post-id       GHL post ID to delete (required)
+    --dry-run       REQUIRED for safety — previews what would be deleted without calling API
+    --location-id   GHL location ID (default: $GHL_LOCATION_ID)
+    --api-key       GHL API key (default: $GHL_API_KEY)
+
+Environment Variables:
+    GHL_API_KEY       -- GHL Bearer token (required)
+    GHL_LOCATION_ID   -- Default location ID
+
+Examples:
+    # Dry run (safe — shows what would be deleted)
+    python scripts/ghl_social_delete_post.py --post-id post_abc123 --dry-run
+
+    # Live delete (requires explicit confirmation)
+    python scripts/ghl_social_delete_post.py --post-id post_abc123
+
+    # With explicit credentials
+    python scripts/ghl_social_delete_post.py \\
+        --post-id post_abc123 \\
+        --location-id pVJjc3aFLNffIlJCvY6B \\
+        --api-key eyJhbGciOiJSUzI1NiJ9... \\
+        --dry-run
+
+Exit codes:
+    0 -- success (or dry-run completed)
+    1 -- error (missing args, API error, not found)
 """
 
 from __future__ import annotations
 
 import argparse
-import json
+import logging
 import os
 import sys
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(REPO_ROOT))
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import yaml
-
-from publisher.models import Brand, BrandCredentials
 from publisher.adapters.ghl import GHLAdapter
 
-
-def resolve_config(args: argparse.Namespace) -> tuple[str, str]:
-    """Resolve location_id and api_key from args > env > brand.yaml."""
-    location_id = args.location_id or os.environ.get("GHL_LOCATION_ID", "")
-    api_key = args.api_key or os.environ.get("GHL_API_KEY", "")
-
-    if not location_id:
-        brand_path = REPO_ROOT / "brands" / "secondring" / "brand.yaml"
-        if brand_path.exists():
-            data = yaml.safe_load(brand_path.read_text())
-            location_id = (data.get("ghl") or {}).get("location_id", "")
-
-    return location_id, api_key
+import types
+from publisher.retry import PermanentError, PublishError, RateLimitError
 
 
-def make_adapter(location_id: str, api_key: str) -> GHLAdapter:
-    """Create a GHLAdapter with minimal config for CLI use."""
-    brand = Brand(
-        brand_name="cli",
-        credentials=BrandCredentials(),
-        cadence={},
-        pillars=[],
-        slug="cli",
+logging.basicConfig(level=logging.WARNING, format="%(levelname)s: %(message)s")
+logger = logging.getLogger(__name__)
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Delete a GHL Social Planner post",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    adapter = GHLAdapter(brand=brand, state_dir=Path("/tmp/ghl-cli-state"))
-    adapter.location_id = location_id
+    parser.add_argument(
+        "--post-id",
+        required=True,
+        help="GHL post ID to delete",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Preview deletion without making any API call (recommended)",
+    )
+    parser.add_argument(
+        "--location-id",
+        default=os.environ.get("GHL_LOCATION_ID", ""),
+        help="GHL location ID (default: $GHL_LOCATION_ID)",
+    )
+    parser.add_argument(
+        "--api-key",
+        default=os.environ.get("GHL_API_KEY", ""),
+        help="GHL API key / Bearer token (default: $GHL_API_KEY)",
+    )
+    parser.add_argument(
+        "--verbose", "-v",
+        action="store_true",
+        help="Enable verbose logging",
+    )
+    return parser.parse_args()
+
+
+def make_adapter(api_key: str, location_id: str) -> GHLAdapter:
+    os.environ["GHL_API_KEY"] = api_key
+    os.environ["GHL_LOCATION_ID"] = location_id
+
+    brand = types.SimpleNamespace(ghl={"location_id": location_id, "accounts": {}})
+
+    state_dir = Path(os.environ.get("TMPDIR", "/tmp")) / "ghl_cli_state"
+    state_dir.mkdir(parents=True, exist_ok=True)
+
+    adapter = GHLAdapter(brand, state_dir)
     adapter.api_key = api_key
+    adapter.location_id = location_id
     return adapter
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Delete a GHL social post")
-    parser.add_argument("--post-id", required=True, help="GHL post ID to delete")
-    parser.add_argument("--dry-run", action="store_true", help="Show post details without deleting")
-    parser.add_argument("--yes", action="store_true", help="Skip confirmation prompt")
-    parser.add_argument("--location-id", help="GHL location ID")
-    parser.add_argument("--api-key", help="GHL API key")
-    args = parser.parse_args()
+    args = parse_args()
 
-    location_id, api_key = resolve_config(args)
+    if args.verbose:
+        logging.getLogger().setLevel(logging.DEBUG)
 
-    if not location_id:
-        print("Error: No location ID provided", file=sys.stderr)
-        return 1
-    if not api_key:
-        print("Error: No API key provided", file=sys.stderr)
+    if not args.api_key:
+        print("Error: GHL_API_KEY not set. Use --api-key or set the environment variable.", file=sys.stderr)
         return 1
 
-    adapter = make_adapter(location_id, api_key)
-
-    # Fetch post details first
-    try:
-        post_data = adapter.get_post(args.post_id)
-    except Exception as e:
-        print(f"Error fetching post: {e}", file=sys.stderr)
+    if not args.location_id:
+        print("Error: GHL_LOCATION_ID not set. Use --location-id or set the environment variable.", file=sys.stderr)
         return 1
-
-    if post_data is None:
-        print(f"Post not found: {args.post_id}", file=sys.stderr)
-        return 1
-
-    # Display post info
-    print(f"Post ID:      {post_data.get('id', args.post_id)}")
-    print(f"Platform:     {post_data.get('platform', '—')}")
-    print(f"Status:       {post_data.get('status', '—')}")
-    print(f"Scheduled at: {post_data.get('scheduledAt', post_data.get('scheduled_at', '—'))}")
-    content = post_data.get("content", "")
-    print(f"Content:      {content[:120]}{'...' if len(content) > 120 else ''}")
 
     if args.dry_run:
-        print("\n[DRY RUN] Would delete this post. Use without --dry-run to proceed.")
+        print("[DRY RUN] Would DELETE from GHL Social Planner:")
+        print(f"  Location:  {args.location_id}")
+        print(f"  Endpoint:  DELETE /social-media-posting/{args.location_id}/posts/{args.post_id}")
+        print(f"  Post ID:   {args.post_id}")
+        print("[DRY RUN] No API call made.")
         return 0
 
-    # Confirmation
-    if not args.yes:
-        confirm = input("\nDelete this post? [y/N] ").strip().lower()
-        if confirm != "y":
-            print("Cancelled.")
-            return 0
+    # Live delete — require interactive confirmation
+    print(f"WARNING: This will permanently delete post {args.post_id}.")
+    print("This action CANNOT be undone. Use --dry-run to preview first.")
+    print(f"Type the post ID to confirm, or Ctrl+C to cancel: ", end="")
+    try:
+        confirmation = input().strip()
+    except KeyboardInterrupt:
+        print("\nCancelled.")
+        return 0
+
+    if confirmation != args.post_id:
+        print("Confirmation failed — post ID does not match. Aborting.", file=sys.stderr)
+        return 1
 
     try:
+        adapter = make_adapter(args.api_key, args.location_id)
         success = adapter.delete(args.post_id)
         if success:
-            print(f"\nDeleted: {args.post_id}")
+            print(f"Post {args.post_id} deleted successfully.")
             return 0
         else:
-            print("Delete returned unexpected status", file=sys.stderr)
+            print(f"Error: Deletion did not confirm success for post {args.post_id}.", file=sys.stderr)
             return 1
+    except PermanentError as e:
+        status = getattr(e, "status_code", None)
+        if status == 404:
+            print(f"Error: Post {args.post_id} not found (404).", file=sys.stderr)
+        elif status in (401, 403):
+            print(f"Error: Authentication/authorization failed ({status}).", file=sys.stderr)
+        else:
+            print(f"Error: GHL API error: {e}", file=sys.stderr)
+        return 1
+    except (PublishError, RateLimitError) as e:
+        print(f"Error: GHL API error: {e}", file=sys.stderr)
+        return 1
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1

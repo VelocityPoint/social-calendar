@@ -1,103 +1,174 @@
 #!/usr/bin/env python3
 """
-scripts/ghl_social_list_accounts.py -- List connected social accounts for a GHL location.
+ghl_social_list_accounts.py -- List connected GHL Social Planner accounts
+
+Lists all connected social media accounts for a GHL location via the
+GoHighLevel Social Planner API.
 
 Usage:
-    python scripts/ghl_social_list_accounts.py [--location-id X] [--api-key X]
+    python scripts/ghl_social_list_accounts.py [--location-id ID] [--json]
 
-Auth/location resolution order:
-    1. CLI args (--location-id, --api-key)
-    2. Environment variables (GHL_LOCATION_ID, GHL_API_KEY)
-    3. brands/secondring/brand.yaml (location_id only)
+Environment Variables:
+    GHL_API_KEY       -- GHL Bearer token (required)
+    GHL_LOCATION_ID   -- Default location ID (overridden by --location-id)
 
-Ref: AC2 (auth check), AC6 (list accounts)
+Output (default tabular):
+    ACCOUNT_ID        PLATFORM   NAME              STATUS
+    acc_abc123        facebook   My Page           connected
+    acc_def456        instagram  @myhandle         connected
+
+Output (--json):
+    JSON array of raw account objects from GHL API
+
+Examples:
+    # Use default location from env
+    python scripts/ghl_social_list_accounts.py
+
+    # Specify location explicitly
+    python scripts/ghl_social_list_accounts.py --location-id pVJjc3aFLNffIlJCvY6B
+
+    # Get raw JSON for piping
+    python scripts/ghl_social_list_accounts.py --json | jq '.[].id'
+
+Exit codes:
+    0 -- success (even if 0 accounts found)
+    1 -- error (missing credentials, API error)
 """
 
 from __future__ import annotations
 
 import argparse
+import json
+import logging
 import os
 import sys
 from pathlib import Path
 
-# Add repo root to path for imports
-REPO_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(REPO_ROOT))
+# Add repo root to path so we can import publisher
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import yaml
-
-from publisher.models import Brand, BrandCredentials
 from publisher.adapters.ghl import GHLAdapter
 
-
-def resolve_config(args: argparse.Namespace) -> tuple[str, str]:
-    """Resolve location_id and api_key from args > env > brand.yaml."""
-    location_id = args.location_id or os.environ.get("GHL_LOCATION_ID", "")
-    api_key = args.api_key or os.environ.get("GHL_API_KEY", "")
-
-    if not location_id:
-        brand_path = REPO_ROOT / "brands" / "secondring" / "brand.yaml"
-        if brand_path.exists():
-            data = yaml.safe_load(brand_path.read_text())
-            location_id = (data.get("ghl") or {}).get("location_id", "")
-
-    return location_id, api_key
+import types
+from publisher.retry import PermanentError
 
 
-def make_adapter(location_id: str, api_key: str) -> GHLAdapter:
-    """Create a GHLAdapter with minimal config for CLI use."""
-    brand = Brand(
-        brand_name="cli",
-        credentials=BrandCredentials(),
-        cadence={},
-        pillars=[],
-        slug="cli",
+logging.basicConfig(level=logging.WARNING, format="%(levelname)s: %(message)s")
+logger = logging.getLogger(__name__)
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="List connected GHL Social Planner accounts",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=__doc__.split("Exit codes:")[0].strip(),
     )
-    adapter = GHLAdapter(brand=brand, state_dir=Path("/tmp/ghl-cli-state"))
-    adapter.location_id = location_id
+    parser.add_argument(
+        "--location-id",
+        default=os.environ.get("GHL_LOCATION_ID", ""),
+        help="GHL location ID (default: $GHL_LOCATION_ID)",
+    )
+    parser.add_argument(
+        "--api-key",
+        default=os.environ.get("GHL_API_KEY", ""),
+        help="GHL API key / Bearer token (default: $GHL_API_KEY)",
+    )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        dest="output_json",
+        help="Output raw JSON instead of tabular format",
+    )
+    parser.add_argument(
+        "--verbose", "-v",
+        action="store_true",
+        help="Enable verbose logging",
+    )
+    return parser.parse_args()
+
+
+def make_adapter(api_key: str, location_id: str) -> GHLAdapter:
+    """Build a minimal GHLAdapter without a full Brand/state_dir."""
+    # Patch env vars so the adapter constructor picks them up
+    os.environ["GHL_API_KEY"] = api_key
+    os.environ["GHL_LOCATION_ID"] = location_id
+
+    # Minimal brand stub — only ghl block matters for the adapter
+    brand = types.SimpleNamespace(ghl={"location_id": location_id, "accounts": {}})
+
+    state_dir = Path(os.environ.get("TMPDIR", "/tmp")) / "ghl_cli_state"
+    state_dir.mkdir(parents=True, exist_ok=True)
+
+    adapter = GHLAdapter(brand, state_dir)
     adapter.api_key = api_key
+    adapter.location_id = location_id
     return adapter
 
 
+def format_tabular(accounts: list[dict]) -> str:
+    """Format accounts as aligned columns."""
+    if not accounts:
+        return "(no accounts found)"
+
+    col_widths = {
+        "id": max(len("ACCOUNT_ID"), max(len(str(a.get("id", ""))) for a in accounts)),
+        "platform": max(len("PLATFORM"), max(len(str(a.get("platform", a.get("type", "")))) for a in accounts)),
+        "name": max(len("NAME"), max(len(str(a.get("name", a.get("displayName", "")))) for a in accounts)),
+        "status": max(len("STATUS"), max(len(str(a.get("status", "unknown"))) for a in accounts)),
+    }
+
+    def row(account_id: str, platform: str, name: str, status: str) -> str:
+        return (
+            f"{account_id:<{col_widths['id']}}  "
+            f"{platform:<{col_widths['platform']}}  "
+            f"{name:<{col_widths['name']}}  "
+            f"{status:<{col_widths['status']}}"
+        )
+
+    lines = [
+        row("ACCOUNT_ID", "PLATFORM", "NAME", "STATUS"),
+        row("-" * col_widths["id"], "-" * col_widths["platform"],
+            "-" * col_widths["name"], "-" * col_widths["status"]),
+    ]
+    for a in accounts:
+        lines.append(row(
+            str(a.get("id", "")),
+            str(a.get("platform", a.get("type", ""))),
+            str(a.get("name", a.get("displayName", ""))),
+            str(a.get("status", "unknown")),
+        ))
+    return "\n".join(lines)
+
+
 def main() -> int:
-    parser = argparse.ArgumentParser(description="List connected GHL social accounts")
-    parser.add_argument("--location-id", help="GHL location ID")
-    parser.add_argument("--api-key", help="GHL API key")
-    args = parser.parse_args()
+    args = parse_args()
 
-    location_id, api_key = resolve_config(args)
+    if args.verbose:
+        logging.getLogger().setLevel(logging.DEBUG)
 
-    if not location_id:
-        print("Error: No location ID provided (--location-id, GHL_LOCATION_ID, or brand.yaml)", file=sys.stderr)
-        return 1
-    if not api_key:
-        print("Error: No API key provided (--api-key or GHL_API_KEY)", file=sys.stderr)
+    if not args.api_key:
+        print("Error: GHL_API_KEY not set. Use --api-key or set the environment variable.", file=sys.stderr)
         return 1
 
-    adapter = make_adapter(location_id, api_key)
+    if not args.location_id:
+        print("Error: GHL_LOCATION_ID not set. Use --location-id or set the environment variable.", file=sys.stderr)
+        return 1
 
     try:
+        adapter = make_adapter(args.api_key, args.location_id)
         accounts = adapter.get_accounts()
+    except PermanentError as e:
+        print(f"Error: GHL API error: {e}", file=sys.stderr)
+        return 1
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
-    if not accounts:
-        print("No connected social accounts found.")
-        return 0
+    if args.output_json:
+        print(json.dumps(accounts, indent=2))
+    else:
+        print(format_tabular(accounts))
 
-    # Print table
-    header = f"{'PLATFORM':<15} {'ACCOUNT NAME':<30} {'ACCOUNT ID':<25} {'STATUS':<10}"
-    print(header)
-    print("-" * len(header))
-    for acct in accounts:
-        platform = acct.get("platform", "unknown")
-        name = acct.get("name", acct.get("account_name", "—"))
-        acct_id = acct.get("id", acct.get("account_id", "—"))
-        status = acct.get("status", acct.get("active", "—"))
-        print(f"{platform:<15} {name:<30} {acct_id:<25} {status:<10}")
-
-    print(f"\nTotal: {len(accounts)} account(s)")
     return 0
 
 
