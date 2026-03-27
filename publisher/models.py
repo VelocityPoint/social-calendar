@@ -17,7 +17,10 @@ from pydantic import BaseModel, Field, field_validator
 
 
 VALID_PLATFORMS = {"facebook", "linkedin", "gbp", "x", "instagram"}
-VALID_STATUSES = {"draft", "scheduled", "published", "failed", "deferred", "video-pending"}
+VALID_STATUSES = {
+    "draft", "ready", "scheduled", "published", "failed", "deferred", "video-pending"
+}
+VALID_AUTHORS = {"dave", "velocitypoint"}
 
 
 class CreativeAsset(BaseModel):
@@ -37,15 +40,21 @@ class Post(BaseModel):
     platforms: list[str]
     status: str
     brand: str
+    author: str  # GHL account mapping: dave | velocitypoint (required per AC8)
+
+    # GHL-specific fields (AC8)
+    ghl_mode: bool = True  # True = publish via GHL Social Planner (default)
+    account_id: Optional[str] = None  # Override: GHL account ID (normally resolved from brand.yaml)
 
     # Optional metadata
-    author: Optional[str] = None
     campaign: Optional[str] = None
     tags: Optional[list[str]] = None
 
-    # Written by publisher after publish (AC6)
+    # Written by publisher after publish (AC6, AC8)
     published_at: Optional[str] = None
+    ghl_post_id: Optional[str] = None  # GHL Social Planner post ID (set by publisher)
     post_ids: Optional[dict[str, str]] = None
+    error: Optional[str] = None  # Last error if status=failed (set by publisher)
 
     # Creative assets
     creative: Optional[list[CreativeAsset]] = None
@@ -65,7 +74,21 @@ class Post(BaseModel):
     @classmethod
     def validate_status(cls, v: str) -> str:
         if v not in VALID_STATUSES:
-            raise ValueError(f"Invalid status: {v}")
+            raise ValueError(
+                f"Invalid status: '{v}'. "
+                f"Valid: {sorted(VALID_STATUSES)}. "
+                f"Lifecycle: draft → ready → scheduled → published | failed"
+            )
+        return v
+
+    @field_validator("author")
+    @classmethod
+    def validate_author(cls, v: str) -> str:
+        if v not in VALID_AUTHORS:
+            raise ValueError(
+                f"Invalid author: '{v}'. Must be one of {sorted(VALID_AUTHORS)}. "
+                f"'author' maps to a GHL social account via brand.yaml → ghl.accounts."
+            )
         return v
 
     def is_published_to(self, platform: str) -> bool:
@@ -107,6 +130,46 @@ class BrandCredentials(BaseModel):
         return getattr(self, platform, None)
 
 
+class GHLAccountMap(BaseModel):
+    """
+    GHL Social Planner account mapping for a brand author.
+    Maps platform names to GHL account IDs.
+    Added as part of Step 3/4 (post schema + brand config ghl block).
+    """
+    linkedin: Optional[str] = None
+    facebook: Optional[str] = None
+    instagram: Optional[str] = None
+    google_business: Optional[str] = None
+    gbp: Optional[str] = None  # Alias for google_business
+
+    def get_account_id(self, platform: str) -> Optional[str]:
+        """Return GHL account ID for a platform. Returns None if not configured."""
+        # Normalise gbp / google_business
+        if platform == "gbp":
+            return self.gbp or self.google_business
+        if platform == "google_business":
+            return self.google_business or self.gbp
+        return getattr(self, platform, None)
+
+
+class GHLConfig(BaseModel):
+    """
+    GHL block in brand.yaml (added in Step 4: feat: brand config ghl block).
+    Optional — absent until Step 4 PR merges. Validated gracefully in publisher.
+    """
+    location_id: Optional[str] = None
+    accounts: Optional[dict[str, dict[str, str]]] = None  # author -> {platform -> account_id}
+
+    def resolve_account_id(self, author: str, platform: str) -> Optional[str]:
+        """Resolve GHL account ID for a given author + platform."""
+        if not self.accounts:
+            return None
+        author_map = self.accounts.get(author, {})
+        return author_map.get(platform) or author_map.get(
+            "google_business" if platform == "gbp" else platform
+        )
+
+
 class Brand(BaseModel):
     brand_name: str
     credentials: BrandCredentials
@@ -114,6 +177,7 @@ class Brand(BaseModel):
     pillars: list[str]
     avatar_id: Optional[str] = None  # HeyGen avatar (Phase 2)
     slug: Optional[str] = None  # Set from directory name
+    ghl: Optional[GHLConfig] = None  # GHL config block (Step 4)
 
     @classmethod
     def from_yaml(cls, yaml_path: Path, slug: str) -> "Brand":
@@ -126,6 +190,10 @@ class Brand(BaseModel):
         data["cadence"] = cadence
         creds_raw = data.get("credentials", {})
         data["credentials"] = BrandCredentials(**creds_raw)
+        # GHL config block (optional — present after Step 4 merges)
+        ghl_raw = data.get("ghl")
+        if ghl_raw:
+            data["ghl"] = GHLConfig(**ghl_raw)
         return cls(**data)
 
 

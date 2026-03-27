@@ -2,7 +2,7 @@
 # Used by scripts/validate-post.py (AC1) and validate-pr.yml workflow
 # Every field is documented with type, required/optional, and constraints
 
-version: "1.0"
+version: "1.1"
 
 fields:
   id:
@@ -33,14 +33,16 @@ fields:
     type: string
     required: true
     description: "Current lifecycle status of the post."
-    enum: [draft, scheduled, published, failed, deferred, video-pending]
+    enum: [draft, ready, scheduled, published, failed, deferred, video-pending]
     notes:
-      - "draft: not merged to main (validate-pr.yml blocks drafts from reaching publisher)"
-      - "scheduled: merged to main, awaiting publish_at"
-      - "published: all targeted platforms confirmed; post_ids populated"
-      - "failed: all retries exhausted; GitHub issue created per AC7"
+      - "draft: work-in-progress, not yet ready for publishing gate"
+      - "ready: merged to main and eligible for the publisher to pick up"
+      - "scheduled: createPost succeeded; GHL holds post until publish_at"
+      - "published: GHL confirmed the post is live on all targeted platforms"
+      - "failed: all retries exhausted; error field populated; GitHub issue created per AC7"
       - "deferred: rate-limited; no issue; retried next run per AC-OQ6"
       - "video-pending: HeyGen not complete (Phase 2)"
+    lifecycle: "draft → ready → scheduled → published | failed"
 
   brand:
     type: string
@@ -50,8 +52,38 @@ fields:
 
   author:
     type: string
+    required: true
+    description: >
+      Author identifier mapping to a GHL social account via brand.yaml → ghl.accounts.
+      Must match a key in brand.yaml ghl.accounts for each listed platform.
+    enum: [dave, velocitypoint]
+    notes:
+      - "In GHL mode (ghl_mode: true), this field is REQUIRED and must resolve to a GHL account."
+      - "Without ghl_mode, this field is still required and informational."
+      - "'dave' = Dave's personal accounts (LinkedIn personal, Facebook personal, etc.)"
+      - "'velocitypoint' = Velocity Point company accounts (if/when connected)"
+
+  account_id:
+    type: string
     required: false
-    description: "Author identifier (GitHub username or agent name). Informational only."
+    description: >
+      GHL account ID override. If omitted, resolved from brand.yaml ghl.accounts[author][platform].
+      Only used in GHL mode. Set by publisher — do not set manually unless overriding brand config.
+    notes:
+      - "Optional override. Normally resolved from brand config at publish time."
+      - "Useful for one-off posts to a specific account not tracked in brand.yaml."
+
+  ghl_mode:
+    type: boolean
+    required: false
+    default: true
+    description: >
+      When true (default), post is published via the GHL Social Planner adapter.
+      Set to false to use legacy direct-platform adapters (deprecated but preserved for backward compat).
+    notes:
+      - "All new posts should use ghl_mode: true (or omit, since true is the default)."
+      - "Legacy posts without this field default to ghl_mode: true."
+      - "Set ghl_mode: false ONLY for explicit backward-compat with deprecated direct adapters."
 
   campaign:
     type: string
@@ -74,18 +106,34 @@ fields:
     notes:
       - "Set by publisher — do not set manually."
 
+  ghl_post_id:
+    type: string
+    required: false
+    description: "GHL Social Planner post ID written by publisher after successful createPost call."
+    notes:
+      - "Set by publisher — do not set manually."
+      - "Used for deletion and status lookups via GHL API."
+
   post_ids:
     type: object
     required: false
     description: "Platform post IDs written by publisher. One key per published platform."
     notes:
       - "Set by publisher — do not set manually."
+      - "In GHL mode, GHL's post ID is stored under ghl_post_id. Platform-native IDs are not returned by GHL API."
     example:
       linkedin: "urn:li:share:7123456789"
       facebook: "1234567890_0987654321"
       x: "1778901234567890123"
       gbp: "accounts/123/locations/456/localPosts/789"
       instagram: "17891234567890123"
+
+  error:
+    type: string
+    required: false
+    description: "Last error message if status=failed. Written by publisher."
+    notes:
+      - "Set by publisher — do not set manually."
 
   creative:
     type: list
@@ -118,11 +166,12 @@ fields:
             enum: [facebook, linkedin, gbp, x, instagram]
 
 # Character limits per platform (enforced by validate-post.py)
+# Source: GHL Social Planner docs + platform native limits
 platform_limits:
   linkedin: 3000
   x: 280
   gbp: 1500
-  facebook: 2200
+  facebook: 63000
   instagram: 2200
 
 # Copy section headers (extracted by publisher per AC11, OQ3)
@@ -132,3 +181,11 @@ copy_section_headers:
   x: "X Version"
   gbp: "Google Business Profile Version"
   instagram: "Instagram Version"
+
+# GHL-mode validation notes
+ghl_mode_notes:
+  - "author must resolve in brand.yaml → ghl.accounts[author][platform]"
+  - "publish_at must include timezone offset (ISO 8601 with +HH:MM or Z)"
+  - "status must be 'ready' for publisher to pick up the post"
+  - "account_id is optional override; normally resolved from brand config"
+  - "ghl_post_id is set by publisher after successful createPost — do not set manually"
