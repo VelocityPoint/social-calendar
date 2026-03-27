@@ -252,6 +252,21 @@ def main() -> int:
         result = process_post(f, adapter, brand_cfg, args.dry_run)
         counts[result] += 1
 
+    # If running in GitHub Actions and we scheduled posts, commit status updates
+    if os.environ.get("GITHUB_ACTIONS") and counts["scheduled"] > 0 and not args.dry_run:
+        import subprocess
+
+        print()
+        print("Committing status updates...")
+        for f in files:
+            if f.exists():
+                subprocess.run(["git", "add", str(f)], check=False)
+        subprocess.run(
+            ["git", "commit", "-m", "chore: mark posts as scheduled [skip ci]"],
+            check=False,
+        )
+        subprocess.run(["git", "push"], check=False)
+
     print()
     print(f"Summary: {counts['scheduled']} scheduled, {counts['skipped']} skipped, {counts['failed']} failed")
 

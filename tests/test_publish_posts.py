@@ -207,3 +207,23 @@ class TestFrontmatterUpdate:
         assert fm["ghl_post_id"] == "ghl_new_post_789"
         assert "published_at" in fm
         assert "Test post content" in body
+
+
+# ---------------------------------------------------------------------------
+# Publish failure — frontmatter unchanged, fail count incremented
+# ---------------------------------------------------------------------------
+
+class TestPublishFailure:
+    def test_publish_failure_does_not_update_frontmatter(self, tmp_path):
+        brand_path = make_brand_file(tmp_path)
+        brand_cfg = load_brand_config(brand_path)
+        adapter = MagicMock()
+        adapter.publish.side_effect = Exception("GHL API error: 500")
+        post_file = make_post_file(tmp_path, READY_POST)
+
+        result = process_post(post_file, adapter, brand_cfg, dry_run=False)
+
+        assert result == "failed"
+        fm, body = parse_frontmatter(post_file)
+        assert fm["status"] == "ready"  # unchanged
+        assert "ghl_post_id" not in fm   # not set
