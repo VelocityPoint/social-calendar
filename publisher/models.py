@@ -13,6 +13,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
 
+from typing import ClassVar
 from pydantic import BaseModel, Field, field_validator
 
 
@@ -206,7 +207,7 @@ class RateLimitState(BaseModel):
     window_seconds: int
 
     # Platform defaults (conservative per AC-OQ6)
-    DEFAULTS: dict[str, dict] = {
+    DEFAULTS: ClassVar[dict[str, dict]] = {
         "linkedin":  {"limit": 100,  "window_seconds": 86400},   # 100/day
         "facebook":  {"limit": 200,  "window_seconds": 3600},    # 200/hour
         "instagram": {"limit": 50,   "window_seconds": 86400},   # 50/24h

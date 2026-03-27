@@ -121,6 +121,72 @@ def write_post_status(
         return False
 
 
+def write_ghl_post_result(
+    file_path: Path,
+    status: str,
+    ghl_post_id: Optional[str] = None,
+    error: Optional[str] = None,
+    published_at: Optional[str] = None,
+) -> bool:
+    """
+    Write GHL publish result back to post frontmatter (Step 5 / AC7).
+
+    Sets:
+      - status → 'scheduled' | 'published' | 'failed'
+      - ghl_post_id → GHL Social Planner post ID (on success)
+      - published_at → ISO timestamp (on success)
+      - error → last error message (on failure)
+
+    Returns True on success, False on error.
+    """
+    try:
+        content = file_path.read_text(encoding="utf-8")
+    except Exception as e:
+        logger.error(f"Cannot read {file_path} for GHL result write: {e}")
+        return False
+
+    match = FRONTMATTER_RE.match(content)
+    if not match:
+        logger.error(f"No frontmatter in {file_path} — cannot write GHL result")
+        return False
+
+    try:
+        frontmatter = yaml.safe_load(match.group(1)) or {}
+    except yaml.YAMLError as e:
+        logger.error(f"Cannot parse frontmatter in {file_path}: {e}")
+        return False
+
+    frontmatter["status"] = status
+
+    if ghl_post_id is not None:
+        frontmatter["ghl_post_id"] = ghl_post_id
+    if published_at is not None:
+        frontmatter["published_at"] = published_at
+    if error is not None:
+        frontmatter["error"] = error
+    elif status != "failed":
+        # Clear any previous error on success
+        frontmatter.pop("error", None)
+
+    new_yaml = yaml.dump(
+        frontmatter,
+        default_flow_style=False,
+        allow_unicode=True,
+        sort_keys=False,
+    )
+
+    body = content[match.end():]
+    new_content = f"---\n{new_yaml}---\n{body}"
+
+    try:
+        file_path.write_text(new_content, encoding="utf-8")
+        logger.info(f"[STATE] GHL result written: status={status} ghl_post_id={ghl_post_id} → {file_path.name}")
+        return True
+    except Exception as e:
+        logger.error(f"Cannot write GHL result to {file_path}: {e}")
+        return False
+
+
 def is_committed_on_main(file_path: Path, repo_root: Path) -> bool:
     """
     AC12: Verify the file's last commit is on the main branch.
