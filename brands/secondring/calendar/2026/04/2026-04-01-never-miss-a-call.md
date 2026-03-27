@@ -1,6 +1,6 @@
 ---
 id: 2026-04-01-never-miss-a-call
-publish_at: 2026-04-01T09:00:00-07:00
+publish_at: "2026-04-01T09:00:00-07:00"
 platforms:
   - linkedin
   - facebook
@@ -10,6 +10,7 @@ platforms:
 status: scheduled
 brand: secondring
 author: davelawler-vp
+ghl_mode: false
 tags:
   - ai-answering
   - never-miss-a-call
