@@ -203,8 +203,97 @@ Requires GBP_LOCATION_NAME in format `accounts/{account_id}/locations/{location_
 
 ---
 
+## GHL Social Planner
+
+PR-driven organic content pipeline that routes posts through the GoHighLevel (GHL) Social Planner API instead of direct platform APIs. Riley (content agent) generates post files, Dave reviews via PR, and merge triggers auto-publishing to LinkedIn, Facebook, Instagram, and Google Business Profile.
+
+**Issue:** [VelocityPoint/social-calendar#2](https://github.com/VelocityPoint/social-calendar/issues/2)
+
+### Quick Start
+
+1. **Connect social accounts** in the GHL UI: Marketing > Social Planner > Connect Accounts (in the [SR] Sales sub-account)
+2. **Discover account IDs:**
+   ```bash
+   GHL_API_KEY=<key> GHL_LOCATION_ID=cUgvqrKmBM4sAZvMH1JS \
+     python scripts/ghl_social_list_accounts.py
+   ```
+3. **Update `brands/secondring/brand.yaml`** — replace `<account_id>` placeholders in the `ghl.accounts` block with the real IDs from step 2
+4. **Riley opens a PR** with post `.md` files > Dave reviews > merge > `publish.yml` auto-publishes to GHL
+
+### GHL Post File Format
+
+One file per platform per post. Files live in `brands/<brand>/calendar/YYYY/MM/`.
+
+```markdown
+---
+platform: linkedin
+scheduled_at: 2026-04-03T14:00:00-07:00
+author: dave
+status: draft
+tags:
+  - ai-answering
+  - never-miss-a-call
+---
+
+Your AI receptionist never sleeps. While you're closing deals in the field,
+Second Ring answers every call, books appointments, and follows up — automatically.
+
+#AIReceptionist #NeverMissACall #SecondRing
+```
+
+**Naming convention:** `YYYY-MM-DD-{platform}-{slug}.md` (e.g., `2026-04-09-facebook-never-miss.md`)
+
+### Supported Platforms
+
+| Platform | Frontmatter value | Character limit |
+|----------|-------------------|-----------------|
+| LinkedIn | `linkedin` | 3,000 |
+| Facebook | `facebook` | 63,000 |
+| Instagram | `instagram` | 2,200 |
+| Google Business Profile | `google_business` | 1,500 |
+
+### CLI Tools
+
+```bash
+# List connected social accounts
+python scripts/ghl_social_list_accounts.py
+
+# Create a post (dry-run)
+python scripts/ghl_social_create_post.py --account-id ACC_ID --content "Hello!" --schedule-at 2026-04-01T10:00:00-07:00 --dry-run
+
+# List scheduled/published posts
+python scripts/ghl_social_list_posts.py --status scheduled
+
+# Delete a post (dry-run)
+python scripts/ghl_social_delete_post.py --post-id POST_ID --dry-run
+```
+
+All tools accept `--location-id` and `--api-key` flags, or read from `GHL_LOCATION_ID` and `GHL_API_KEY` environment variables.
+
+### Supported Workflows
+
+| Workflow | How |
+|----------|-----|
+| **Scheduled post** | Riley creates post file with `status: draft` > PR > Dave sets `status: ready` > merge > auto-publishes at `scheduled_at` |
+| **Dry-run test** | `python scripts/publish_posts.py --brand brands/secondring/brand.yaml --all --dry-run` |
+| **Manual create** | `python scripts/ghl_social_create_post.py --account-id ACC --content "text" --dry-run` |
+| **Delete a post** | `python scripts/ghl_social_delete_post.py --post-id ID --dry-run` |
+
+### Known Limitations
+
+- **Recurring post rules** are UI-only in GHL — we generate batches of future posts instead
+- **Live E2E** requires social accounts connected in GHL UI (not yet connected)
+- **Real account IDs** must be filled into `brands/secondring/brand.yaml` before publishing works
+- **TikTok, Reels, Stories** — deferred to Phase 2
+- **Analytics collection** — deferred to Phase 2
+
+Full reference: [docs/GHL_SOCIAL_PLANNER.md](docs/GHL_SOCIAL_PLANNER.md) | Riley guide: [docs/RILEY_HANDOFF.md](docs/RILEY_HANDOFF.md)
+
+---
+
 ## Related
 
 - Issue: [VelocityPoint/Core_Business#222](https://github.com/VelocityPoint/Core_Business/issues/222)
-- Architecture: Daedalus design in issue #222 comments
-- Requirements: Sibyl ACs in issue #222 comments
+- GHL Social Planner: [VelocityPoint/social-calendar#2](https://github.com/VelocityPoint/social-calendar/issues/2)
+- Architecture: Daedalus design in issue #2 comments
+- Requirements: Sibyl ACs in issue #2 comments

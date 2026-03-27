@@ -1,80 +1,61 @@
-name: Social Calendar Publisher
+name: Publish to GHL Social Planner
 
-# Ref: AC-OQ1 (10-min cron), AC5 (scheduling gate), AC6 (commit status back),
-#      AC12 (main branch check), Daedalus design (concurrency, push trigger)
+# Ref: Vulcan design spec (issue #2), AC7 (GHL adapter integration),
+#      AC6 (commit status back), AC8 (brand config / account resolution)
+#
+# Trigger: push to main when calendar post files change (merge event).
+# NOT cron-triggered: GHL handles native scheduling via scheduledAt timestamp.
+# Publisher pushes posts to GHL on merge; GHL fires them at the right time.
 
 on:
-  schedule:
-    - cron: '*/10 * * * *'   # Every 10 minutes
   push:
     branches: [main]
     paths:
-      - 'brands/**/calendar/**/*.md'  # Immediate trigger on content merge
+      - "brands/**/calendar/**/*.md"
   workflow_dispatch:
     inputs:
       brand:
         description: 'Brand slug (or "all" for all brands)'
         required: false
-        default: 'all'
+        default: "all"
       dry_run:
-        description: 'Dry run (no API calls)'
+        description: "Dry run (no API calls)"
         type: boolean
         required: false
         default: false
+      files:
+        description: "Specific files to process (newline-separated, optional)"
+        required: false
+        default: ""
 
-# Serialize runs — no overlapping publishes (Daedalus: rate limit file integrity)
+# Serialize runs — no overlapping publishes (file integrity + rate limit safety)
 concurrency:
-  group: publisher
+  group: ghl-publisher
   cancel-in-progress: false
+
+permissions:
+  contents: write  # Commit status updates back to repo (AC6)
+  issues: write    # Create failure issues (AC7)
 
 jobs:
   publish:
     runs-on: ubuntu-latest
-    environment: production  # Requires environment protection rules for prod credentials
 
-    permissions:
-      contents: write   # Commit status back to repo (AC6)
-      issues: write     # Create failure issues (AC7)
-      id-token: write   # OIDC for Azure Key Vault
-
-    # Skip if this is a publisher status commit (prevents publish -> commit -> publish loop)
+    # Skip if this is a publisher status commit (prevents publish → commit → publish loop)
     if: "!contains(github.event.head_commit.message, '[skip ci]')"
 
     steps:
-      - name: Checkout (full history for AC12 git log main check)
+      - name: Checkout (full history for git diff HEAD~1 HEAD)
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
-
-      - name: Setup xurl auth (AC15)
-        if: env.XURL_CONFIG_JSON != ''
-        run: |
-          mkdir -p ~/.config/xurl
-          echo '${{ secrets.XURL_CONFIG_JSON }}' > ~/.config/xurl/config.json
-          chmod 600 ~/.config/xurl/config.json
-        env:
-          XURL_CONFIG_JSON: ${{ secrets.XURL_CONFIG_JSON }}
-
-      - name: Install xurl
-        run: |
-          if ! command -v xurl &> /dev/null; then
-            echo "xurl not found, installing..."
-            pip install xurl 2>/dev/null || echo "xurl install skipped (not available as pip package)"
-          fi
-
-      - name: Azure Login (OIDC for Key Vault)
-        if: vars.AZURE_CLIENT_ID != ''
-        uses: azure/login@v2
-        with:
-          client-id: ${{ vars.AZURE_CLIENT_ID }}
-          tenant-id: ${{ vars.AZURE_TENANT_ID }}
-          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          fetch-depth: 2
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Python 3.12
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
-          cache: 'pip'
+          python-version: "3.12"
+          cache: "pip"
 
       - name: Install dependencies
         run: pip install -r publisher/requirements.txt
@@ -86,51 +67,65 @@ jobs:
 
       - name: Validate GHL CLI scripts (dry-run self-tests)
         run: |
-          # Verify all 4 CLI scripts load and --help exits cleanly
           python scripts/ghl_social_list_accounts.py --help > /dev/null
           python scripts/ghl_social_list_posts.py --help > /dev/null
           python scripts/ghl_social_create_post.py --help > /dev/null
           python scripts/ghl_social_delete_post.py --help > /dev/null
-
-          # Dry-run create: confirm payload preview exits 0, no API call
-          python scripts/ghl_social_create_post.py \
-            --account-id dry-run-account \
-            --content "Dry-run test post — no live API call" \
-            --schedule-at "2026-04-01T10:00:00Z" \
-            --location-id "dry-run-location" \
-            --api-key "dry-run-key" \
-            --dry-run
-
-          # Dry-run delete: confirm preview exits 0, no API call
-          python scripts/ghl_social_delete_post.py \
-            --post-id "dry-run-post-id" \
-            --location-id "dry-run-location" \
-            --api-key "dry-run-key" \
-            --dry-run
-
           echo "GHL CLI dry-run validation passed."
 
-      - name: Run Publisher (GHL Social Planner)
+      - name: Identify changed post files (push trigger)
+        id: changed
+        if: github.event_name == 'push'
         run: |
-          python scripts/publish_posts.py \
-            --brand brands/secondring/brand.yaml \
-            --all \
-            ${{ inputs.dry_run == 'true' && '--dry-run' || '' }}
+          FILES=$(git diff --name-only HEAD~1 HEAD -- "brands/**/calendar/**/*.md" || true)
+          echo "files<<EOF" >> $GITHUB_OUTPUT
+          echo "$FILES" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          echo "Identified changed files:"
+          echo "$FILES"
+
+      - name: Publish ready posts to GHL (push trigger)
+        if: github.event_name == 'push'
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
           GHL_API_KEY: ${{ secrets.GHL_API_KEY }}
           GHL_LOCATION_ID: ${{ secrets.GHL_LOCATION_ID }}
-          AZURE_KEY_VAULT_NAME: ${{ vars.AZURE_KEY_VAULT_NAME }}
+          ASSETS_BASE_URL: ${{ vars.ASSETS_BASE_URL }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ vars.TELEGRAM_CHAT_ID }}
-          ASSETS_BASE_URL: ${{ vars.ASSETS_BASE_URL }}
+        run: |
+          python -m publisher.publisher \
+            --mode ghl \
+            --brand all \
+            --files "${{ steps.changed.outputs.files }}"
 
-      - name: Commit status updates (fallback)
+      - name: Publish ready posts to GHL (manual trigger)
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GHL_API_KEY: ${{ secrets.GHL_API_KEY }}
+          GHL_LOCATION_ID: ${{ secrets.GHL_LOCATION_ID }}
+          ASSETS_BASE_URL: ${{ vars.ASSETS_BASE_URL }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ vars.TELEGRAM_CHAT_ID }}
+        run: |
+          EXTRA_ARGS=""
+          if [ "${{ inputs.dry_run }}" = "true" ]; then EXTRA_ARGS="--dry-run"; fi
+          FILES_ARG=""
+          if [ -n "${{ inputs.files }}" ]; then FILES_ARG="--files '${{ inputs.files }}'"; fi
+          python -m publisher.publisher \
+            --mode ghl \
+            --brand "${{ inputs.brand }}" \
+            $EXTRA_ARGS \
+            $FILES_ARG
+
+      - name: Commit status updates
         run: |
           git add brands/
           if ! git diff --staged --quiet; then
-            git commit -m "chore: record publish status [skip ci]"
+            git commit -m "chore: record GHL publish status [skip ci]"
             git push
           else
             echo "No status changes to commit."
