@@ -16,6 +16,18 @@ credentials:
   gbp: kv-secondring-gbp-credentials
   x: kv-secondring-x-config               # xurl config JSON
 
+# GHL Social Planner integration
+# All social publishing routes through GHL's unified API.
+# Account IDs are placeholders until social accounts are connected in GHL UI.
+ghl:
+  location_id: "cUgvqrKmBM4sAZvMH1JS"   # SR Sales production
+  accounts:
+    dave:
+      linkedin: "PLACEHOLDER_CONNECT_LINKEDIN"
+      facebook: "PLACEHOLDER_CONNECT_FACEBOOK"
+      instagram: "PLACEHOLDER_CONNECT_INSTAGRAM"
+      google_business: "PLACEHOLDER_CONNECT_GBP"
+
 # Posting cadence per platform
 cadence:
   linkedin:
