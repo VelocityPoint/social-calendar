@@ -40,7 +40,7 @@ social-calendar/
 │                   ├── 2026-04-09-facebook-missed-calls.md
 │                   └── 2026-04-14-linkedin-receptionist.md
 ├── publisher/
-│   ├── publisher.py                      # Main orchestrator — cron mode AND --mode ghl
+│   ├── publisher.py                      # Main orchestrator — use --mode ghl for GHL Social Planner
 │   ├── models.py                         # Pydantic models: Post, Brand, GHLConfig, RateLimitState
 │   ├── state.py                          # Read/write post frontmatter (YAML)
 │   ├── retry.py                          # Retry logic + error classes
@@ -53,7 +53,7 @@ social-calendar/
 │       ├── x_twitter.py                  # Deprecated
 │       └── gbp.py                        # Deprecated
 ├── scripts/
-│   ├── publish_posts.py                  # Merge-triggered publisher (called by Actions)
+│   ├── publish_posts.py                  # Standalone merge-trigger script (PR #7, superseded by publisher.py --mode ghl)
 │   ├── ghl_social_list_accounts.py       # List connected GHL social accounts
 │   ├── ghl_social_create_post.py         # Create a post (with --dry-run)
 │   ├── ghl_social_list_posts.py          # List scheduled/published posts
@@ -63,11 +63,12 @@ social-calendar/
 ├── schemas/
 │   └── post.schema.yaml                  # Schema definition v1.1
 ├── tests/
-│   ├── test_ghl_adapter.py               # 47 tests for GHLAdapter
+│   ├── test_ghl_adapter.py               # 47 tests for GHLAdapter (arrives with PR #3)
 │   ├── test_publisher_ghl_mode.py        # 18 tests for publisher --mode ghl
-│   └── test_publish_posts.py             # 6 tests for publish_posts.py
+│   ├── test_publish_posts.py             # 6 tests for publish_posts.py
+│   └── test_publisher_ghl_mode.py       # 18 tests for publisher.py --mode ghl (arrives with PR #8)
 └── .github/workflows/
-    ├── publish.yml                       # Merge trigger + cron publisher
+    ├── publish.yml                       # Merge trigger + workflow_dispatch publisher (no cron)
     ├── validate-pr.yml                   # PR schema check
     └── auth-check.yml                    # Weekly credential health check
 ```

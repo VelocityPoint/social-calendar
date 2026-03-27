@@ -309,7 +309,7 @@ ghl:
 
 | Attribute | Value |
 |-----------|-------|
-| **Triggers** | Push to `main` (paths: `brands/**/calendar/**/*.md`), cron `*/10 * * * *`, `workflow_dispatch` |
+| **Triggers** | Push to `main` (paths: `brands/**/calendar/**/*.md`), `workflow_dispatch` |
 | **Concurrency** | `group: publisher`, `cancel-in-progress: false` (serialize) |
 | **Loop guard** | Skips if commit message contains `[skip ci]` |
 | **Permissions** | `contents: write`, `issues: write`, `id-token: write` (OIDC) |
