@@ -16,6 +16,33 @@ credentials:
   gbp: kv-secondring-gbp-credentials
   x: kv-secondring-x-config               # xurl config JSON
 
+# GHL Social Planner integration
+# Ref: Daedalus design spec (section 6 — Account Resolution)
+#
+# account_ids must be filled in before publishing goes live.
+# To discover account IDs, run:
+#   GHL_API_KEY=<key> GHL_LOCATION_ID=cUgvqrKmBM4sAZvMH1JS \
+#     python scripts/ghl_social_list_accounts.py
+#
+# Each listed account shows: ACCOUNT_ID  PLATFORM  NAME  STATUS
+# Copy the ACCOUNT_ID values into the appropriate fields below.
+#
+# Author names here map to the `author:` field in post frontmatter.
+# Validation in validate-post.py will block merge if an author or platform
+# has no entry here. Posts for non-GHL brands omit this block entirely —
+# missing ghl: is valid and non-GHL posts pass validation without it.
+ghl:
+  location_id: cUgvqrKmBM4sAZvMH1JS    # [SR] Sales production sub-account
+  accounts:
+    dave:                                # author name used in post frontmatter (e.g. `author: dave`)
+      linkedin: "<account_id>"           # Replace with ID from ghl_social_list_accounts.py
+      facebook: "<account_id>"           # Replace with ID from ghl_social_list_accounts.py
+      instagram: "<account_id>"          # Replace with ID from ghl_social_list_accounts.py
+      google_business: "<account_id>"    # Replace with ID from ghl_social_list_accounts.py
+    velocitypoint:                       # Company brand accounts (future use)
+      linkedin: "<account_id>"           # Replace with ID from ghl_social_list_accounts.py
+      facebook: "<account_id>"           # Replace with ID from ghl_social_list_accounts.py
+
 # Posting cadence per platform
 cadence:
   linkedin:
