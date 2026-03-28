@@ -208,3 +208,16 @@ Requires GBP_LOCATION_NAME in format `accounts/{account_id}/locations/{location_
 - Issue: [VelocityPoint/Core_Business#222](https://github.com/VelocityPoint/Core_Business/issues/222)
 - Architecture: Daedalus design in issue #222 comments
 - Requirements: Sibyl ACs in issue #222 comments
+
+
+---
+
+<!-- FORGE #320 ADDITIONS — review, integrate, and remove this block -->
+
+
+## Status
+
+**Status:** Active _(TODO: Confirm — Active / In Development / Archived / Deprecated)_
+
+
+_Enriched by Forge README audit — 2026-03-28 — [Forge #320](https://github.com/VelocityPoint/Core_Business/issues/320)_
