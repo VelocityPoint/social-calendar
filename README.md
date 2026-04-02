@@ -56,10 +56,7 @@ publisher/
 scripts/
   validate-post.py           -- Post document schema validator
   validate-brand.py          -- Brand config validator
-  ghl_social_list_accounts.py  -- List connected GHL social accounts
-  ghl_social_create_post.py    -- Create a post manually (--dry-run supported)
-  ghl_social_list_posts.py     -- List scheduled/published posts
-  ghl_social_delete_post.py    -- Delete a post
+  ghl_social.py              -- GHL Social Planner CLI (accounts / posts / create / delete)
 
 schemas/
   post.schema.yaml      -- Post document schema definition v1.1
@@ -166,7 +163,7 @@ Requires `GBP_LOCATION_NAME` in format `accounts/{account_id}/locations/{locatio
 ## Adding a New Brand
 
 1. Create `brands/<brand>/brand.yaml` (use `brands/secondring/brand.yaml` as template)
-2. Connect social accounts in GHL sub-account; get account IDs via `ghl_social_list_accounts.py`
+2. Connect social accounts in GHL sub-account; get account IDs via `python scripts/ghl_social.py accounts`
 3. Add credential secrets to GitHub environment
 4. Create `brands/<brand>/calendar/YYYY/MM/` directories
 5. No code changes required
