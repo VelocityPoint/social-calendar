@@ -2,18 +2,28 @@
 
 GitHub-native social media content calendar and publisher for VelocityPoint.
 
+**Status:** Active
 **Issue:** VelocityPoint/Core_Business#222
-**Phase:** 1 MVP
+**Phase:** 1 (GHL Social Planner integration)
 
 ---
 
-## How It Works
+## How It Works — Two Gates
 
-1. Author a post document in `brands/<brand>/calendar/YYYY/MM/YYYY-MM-DD-<slug>.md`
-2. Open a PR — the `validate-pr.yml` workflow checks schema and copy sections
-3. Merge to main — the PR merge is the approval gate (no post publishes without it)
-4. The `publish.yml` workflow runs every 10 minutes and publishes posts whose `publish_at` has arrived
-5. Publisher commits status and platform post IDs back to the document as `[skip ci]`
+Every post requires two explicit approvals before going live:
+
+**Gate 1 — GitHub PR (copy approval)**
+1. Riley generates post `.md` files and opens a PR
+2. `validate-pr.yml` checks schema and character limits automatically
+3. Dave reads the copy in the GitHub diff, sets `status: ready` on approved posts, and merges
+
+**Gate 2 — GHL Social Planner (visual approval + activation)**
+4. Merge triggers `publish.yml` — publisher creates posts in GHL as **drafts** (not auto-fired)
+5. Dave receives a Telegram notification: "X posts pending approval in GHL"
+6. Dave opens GHL Social Planner, reviews visual previews, and clicks Schedule
+7. GHL fires each post at its `publish_at` time
+
+> See [`docs/SOCIAL_CALENDAR_WORKFLOW.md`](docs/SOCIAL_CALENDAR_WORKFLOW.md) for the full formalized workflow.
 
 ---
 
@@ -22,37 +32,47 @@ GitHub-native social media content calendar and publisher for VelocityPoint.
 ```
 brands/
   <brand>/
-    brand.yaml          -- Brand config: credential refs, cadence, pillars
+    brand.yaml          -- Brand config: GHL location ID, account IDs, cadence, voice
     assets/             -- Image assets referenced by posts
-    .state/
-      rate_limits/      -- Per-platform rate limit counters (JSON, committed by publisher)
     calendar/
       YYYY/
         MM/
-          YYYY-MM-DD-<slug>.md  -- Post documents
+          YYYY-MM-DD-{platform}-{slug}.md  -- Post documents (one file per platform)
 
 publisher/
-  publisher.py          -- Main orchestrator
-  models.py             -- Post, Brand, RateLimitState models
+  publisher.py          -- Main orchestrator (--mode ghl)
+  models.py             -- Post, Brand, GHLConfig, RateLimitState models
   state.py              -- Frontmatter read/write
   retry.py              -- Retry with 10s/30s/90s backoff
   adapters/
+    ghl.py              -- GHL Social Planner adapter (active)
     base.py             -- Abstract adapter interface
-    x_twitter.py        -- X/Twitter via xurl CLI
-    facebook.py         -- Facebook via Meta Graph API
-    instagram.py        -- Instagram via Meta Graph API (shared Facebook creds)
-    linkedin.py         -- LinkedIn Posts API
-    gbp.py              -- Google Business Profile API
+    facebook.py         -- Deprecated (GHL handles Meta OAuth)
+    instagram.py        -- Deprecated
+    linkedin.py         -- Deprecated
+    x_twitter.py        -- Deprecated
+    gbp.py              -- Deprecated
 
 scripts/
-  validate-post.py      -- Post document schema validator
-  validate-brand.py     -- Brand config validator
+  validate-post.py           -- Post document schema validator
+  validate-brand.py          -- Brand config validator
+  ghl_social_list_accounts.py  -- List connected GHL social accounts
+  ghl_social_create_post.py    -- Create a post manually (--dry-run supported)
+  ghl_social_list_posts.py     -- List scheduled/published posts
+  ghl_social_delete_post.py    -- Delete a post
 
 schemas/
-  post.schema.yaml      -- Post document schema definition
+  post.schema.yaml      -- Post document schema definition v1.1
+
+docs/
+  SOCIAL_CALENDAR_WORKFLOW.md      -- Canonical workflow (start here)
+  GHL_SOCIAL_PLANNER_ARCHITECTURE.md  -- Architecture + data flow diagrams
+  DEVELOPER_GUIDE.md               -- Step-by-step for engineers
+  RILEY_HANDOFF_SPEC.md            -- Instructions for Riley (content agent)
+  OPERATIONAL_RUNBOOK.md           -- Day-to-day ops and incident response
 
 .github/workflows/
-  publish.yml           -- Scheduled publisher (10-min cron + push trigger)
+  publish.yml           -- Merge-triggered publisher (push to main)
   validate-pr.yml       -- Schema validation on PRs
   auth-check.yml        -- Weekly credential health check
 ```
@@ -61,53 +81,39 @@ schemas/
 
 ## Post Document Format
 
+One file per platform. Filename: `YYYY-MM-DD-{platform}-{slug}.md`
+
 ```markdown
 ---
-id: 2026-04-01-example-post
-publish_at: 2026-04-01T09:00:00-07:00
+id: 2026-04-14-linkedin-spring-rush
+publish_at: 2026-04-14T09:00:00-07:00
 platforms:
   - linkedin
-  - facebook
-  - x
-  - gbp
-  - instagram
-status: scheduled
+status: draft
 brand: secondring
+author: dave
 tags:
-  - example
+  - spring-2026
+  - service-business
 ---
 
-# LinkedIn Version
-
 Your LinkedIn copy here (max 3,000 characters).
-
-# Facebook Version
-
-Your Facebook copy here (max 2,200 characters).
-
-# X Version
-
-Your X/Twitter copy here (max 280 characters).
-
-# Google Business Profile Version
-
-Your GBP copy here (max 1,500 characters).
-
-# Instagram Version
-
-Your Instagram copy here (max 2,200 characters).
 ```
 
 ### Post Status Lifecycle
 
-| Status | Meaning |
-|--------|---------|
-| `draft` | Work in progress — blocked from main by validate-pr.yml |
-| `scheduled` | Merged to main, awaiting publish_at |
-| `published` | All platforms confirmed, post_ids populated |
-| `failed` | All retries exhausted, GitHub issue created |
-| `deferred` | Rate-limited, will retry next run (no issue) |
-| `video-pending` | HeyGen render in progress (Phase 2) |
+```
+draft → ready → ghl-pending → scheduled → published
+```
+
+| Status | Set by | Meaning |
+|--------|--------|---------|
+| `draft` | Riley | Work in progress — CI blocks merge |
+| `ready` | Dave (in PR) | Copy approved — publisher picks up on merge |
+| `ghl-pending` | Publisher | Post created in GHL draft queue — awaiting Dave's Gate 2 approval |
+| `scheduled` | GHL / Publisher | Dave approved in GHL — will fire at `publish_at` |
+| `published` | GHL / Publisher | Post is live on platform |
+| `failed` | Publisher | All retries exhausted — `error` field populated, GitHub issue created |
 
 ---
 
@@ -115,7 +121,7 @@ Your Instagram copy here (max 2,200 characters).
 
 ```bash
 pip install pyyaml pydantic
-python scripts/validate-post.py brands/secondring/calendar/2026/04/2026-04-01-example.md
+python scripts/validate-post.py brands/secondring/calendar/2026/04/2026-04-14-linkedin-spring-rush.md
 ```
 
 ---
@@ -126,85 +132,52 @@ python scripts/validate-post.py brands/secondring/calendar/2026/04/2026-04-01-ex
 pip install -r publisher/requirements.txt
 
 # Dry run (no API calls)
-python -m publisher.publisher --brand secondring --dry-run
-
-# Auth check only
-python -m publisher.publisher --brand secondring --auth-check
+python -m publisher.publisher --mode ghl --brand secondring --dry-run
 
 # Full run
-python -m publisher.publisher --brand secondring
+python -m publisher.publisher --mode ghl --brand secondring
 ```
 
-Required environment variables (Phase 1 — before Key Vault):
+Required secrets (GitHub Actions environment):
 
-| Variable | Purpose |
-|----------|---------|
-| `GITHUB_TOKEN` | Create failure issues |
-| `GITHUB_REPOSITORY` | Repo for failure issues (e.g. VelocityPoint/social-calendar) |
-| `XURL_CONFIG_JSON` | xurl auth config (written to `~/.config/xurl/config.json`) |
-| `FACEBOOK_PAGE_ID` | Facebook page ID |
-| `LINKEDIN_AUTHOR_URN` | LinkedIn organization or person URN |
-| `GBP_LOCATION_NAME` | GBP location resource name |
-| `INSTAGRAM_USER_ID` | Instagram Business Account user ID |
-| `ASSETS_BASE_URL` | Azure Blob base URL for public image access |
-| `TELEGRAM_BOT_TOKEN` | Telegram bot token for failure notifications |
-| `TELEGRAM_CHAT_ID` | Telegram chat ID for notifications |
+| Secret | Purpose |
+|--------|---------|
+| `GHL_API_KEY` | GHL Social Planner API — Bearer token |
+| `GHL_LOCATION_ID` | GHL sub-account location ID |
+| `GITHUB_TOKEN` | Auto-provided — status commit-back + failure issues |
+| `TELEGRAM_BOT_TOKEN` | Telegram notification on pending approval |
+| `TELEGRAM_CHAT_ID` | Telegram chat for notifications |
 
 ---
 
 ## Platform Notes
 
-### X/Twitter
-Uses [xurl](https://github.com/xurl/xurl) CLI. No direct API calls. Auth config written by workflow setup step.
+### GHL Social Planner (primary)
+All publishing routes through GHL. GHL manages platform OAuth — no token rotation needed on our side. Platforms: Facebook, Instagram, LinkedIn, Google Business Profile, X/Twitter.
 
 ### Instagram
-Shares Meta app credentials with Facebook (AC14). Requires a public image URL — text-only posts are not supported by the Instagram API.
+Shares Meta app credentials with Facebook via GHL. Requires a public image URL — text-only posts are not supported.
 
 ### Google Business Profile
-Requires GBP_LOCATION_NAME in format `accounts/{account_id}/locations/{location_id}`.
+Requires `GBP_LOCATION_NAME` in format `accounts/{account_id}/locations/{location_id}`.
 
 ---
 
 ## Adding a New Brand
 
 1. Create `brands/<brand>/brand.yaml` (use `brands/secondring/brand.yaml` as template)
-2. Add credential secrets to GitHub environment or Azure Key Vault
-3. Create `brands/<brand>/calendar/YYYY/MM/` directories
-4. No code changes required (AC16)
-
----
-
-## Acceptance Criteria Reference
-
-| AC | Status | Notes |
-|----|--------|-------|
-| AC1 | Phase 1 | validate-post.py, schemas/post.schema.yaml |
-| AC2 | Phase 1 | auth_check() in each adapter, auth-check.yml workflow |
-| AC3 | Phase 1 | Text publish in all adapters |
-| AC4 | Phase 1 | Image publish in all adapters |
-| AC5 | Phase 1 | publish_at gate in publisher.py + validate-post.py timezone check |
-| AC6 | Phase 1 | write_post_status() in state.py, committed by publish.yml |
-| AC7 | Phase 1 | _create_github_issue() in retry.py |
-| AC8 | Phase 1 | validate-brand.py, brand.yaml templates |
-| AC9 | Phase 2 | Content generation from brief (Spark pipeline) |
-| AC10 | Phase 2 | HeyGen video integration |
-| AC11 | Phase 1 | extract_copy_section() in publisher.py, validate-post.py |
-| AC12 | Phase 1 | is_committed_on_main() in state.py |
-| AC13 | Phase 1 | _get_credential() with Key Vault fallback in base.py |
-| AC14 | Phase 1 | instagram.py reads only facebook credential (kv_secondring_facebook_token) |
-| AC15 | Phase 1 | x_twitter.py uses subprocess.run(["xurl", ...]) only |
-| AC16 | Phase 1 | ADAPTER_REGISTRY + brand.yaml pattern; zero code change for new brand |
-| AC-OQ1 | Phase 1 | publish.yml cron + push trigger; summary log for Application Insights |
-| AC-OQ2 | Phase 1 | scan_posts_for_brand() current+next month; validate-post.py path check |
-| AC-OQ3 | Phase 1 | extract_copy_section(); validate-post.py copy section check |
-| AC-OQ4 | Phase 1 | retry.py 3 attempts, 10s/30s/90s backoff, GitHub issue + Telegram |
-| AC-OQ5 | Phase 2 | Azure Blob video storage (HeyGen) |
-| AC-OQ6 | Phase 1 | RateLimitState in models.py; check_rate_limit() in base.py |
+2. Connect social accounts in GHL sub-account; get account IDs via `ghl_social_list_accounts.py`
+3. Add credential secrets to GitHub environment
+4. Create `brands/<brand>/calendar/YYYY/MM/` directories
+5. No code changes required
 
 ---
 
 ## Related
 
-- Issue: [VelocityPoint/Core_Business#222](https://github.com/VelocityPoint/Core_Business/issues/222)
-- Architecture: Daedalus design in issue #222 comments
-- Requirements: Sibyl ACs in issue #222 comments
+- Workflow: [`docs/SOCIAL_CALENDAR_WORKFLOW.md`](docs/SOCIAL_CALENDAR_WORKFLOW.md)
+- Architecture: [`docs/GHL_SOCIAL_PLANNER_ARCHITECTURE.md`](docs/GHL_SOCIAL_PLANNER_ARCHITECTURE.md)
+- Core issue: [VelocityPoint/Core_Business#222](https://github.com/VelocityPoint/Core_Business/issues/222)
+- GHL draft gate: [#13](https://github.com/VelocityPoint/social-calendar/issues/13)
+- Telegram notification: [#14](https://github.com/VelocityPoint/social-calendar/issues/14)
+- Published status sync: [#15](https://github.com/VelocityPoint/social-calendar/issues/15)
