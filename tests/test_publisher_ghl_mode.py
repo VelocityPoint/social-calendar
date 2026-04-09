@@ -3,7 +3,7 @@ tests/test_publisher_ghl_mode.py -- Unit tests for publisher.py --mode ghl (Step
 
 Tests cover:
   - run_ghl_publisher: skip non-ready, process ready, write status back
-  - Success path: status=scheduled (future), status=published (past)
+  - Success path: status=ghl-pending (draft in GHL awaiting Dave's approval)
   - Failure path: status=failed, error field written
   - Dry run: no API calls, no file writes
   - File filtering: --files arg, git diff fallback
@@ -100,7 +100,7 @@ def make_brand_yaml(with_ghl: bool = True) -> dict:
 class TestWriteGhlPostResult:
     """Unit tests for state.write_ghl_post_result()."""
 
-    def test_writes_scheduled_status(self, tmp_path):
+    def test_writes_ghl_pending_status(self, tmp_path):
         from publisher.state import write_ghl_post_result, parse_post_file
 
         post_file = tmp_path / "test.md"
@@ -108,7 +108,7 @@ class TestWriteGhlPostResult:
 
         result = write_ghl_post_result(
             post_file,
-            status="scheduled",
+            status="ghl-pending",
             ghl_post_id="ghl-abc-123",
         )
 
@@ -116,7 +116,7 @@ class TestWriteGhlPostResult:
         content = post_file.read_text()
         fm_yaml = content.split("---")[1]
         fm = yaml.safe_load(fm_yaml)
-        assert fm["status"] == "scheduled"
+        assert fm["status"] == "ghl-pending"
         assert fm["ghl_post_id"] == "ghl-abc-123"
         assert "error" not in fm
 
@@ -169,10 +169,10 @@ class TestWriteGhlPostResult:
         # First write a failure
         write_ghl_post_result(post_file, status="failed", error="previous error")
         # Now succeed
-        write_ghl_post_result(post_file, status="scheduled", ghl_post_id="new-id")
+        write_ghl_post_result(post_file, status="ghl-pending", ghl_post_id="new-id")
 
         fm = yaml.safe_load(post_file.read_text().split("---")[1])
-        assert fm["status"] == "scheduled"
+        assert fm["status"] == "ghl-pending"
         assert "error" not in fm or fm.get("error") is None
 
     def test_preserves_body(self, tmp_path):
@@ -182,7 +182,7 @@ class TestWriteGhlPostResult:
         post_file = tmp_path / "test.md"
         post_file.write_text(original)
 
-        write_ghl_post_result(post_file, status="scheduled", ghl_post_id="id-1")
+        write_ghl_post_result(post_file, status="ghl-pending", ghl_post_id="id-1")
 
         content = post_file.read_text()
         # Body after second "---" delimiter should be preserved
@@ -259,8 +259,8 @@ class TestRunGhlPublisher:
         mock_publish.assert_not_called()
         assert stats["skipped"] == 1
 
-    def test_publishes_ready_post_future_scheduled(self, tmp_path):
-        """Ready post with future publish_at → status=scheduled after publish."""
+    def test_publishes_ready_post_future_as_draft(self, tmp_path):
+        """Ready post with future publish_at → status=ghl-pending (draft in GHL)."""
         brand_dir, post_file = self._make_brand_and_post(
             tmp_path, post_status="ready", publish_at=FUTURE_PUBLISH_AT
         )
@@ -275,11 +275,11 @@ class TestRunGhlPublisher:
         assert stats["published"] == 1
         assert stats["failed"] == 0
         fm = yaml.safe_load(post_file.read_text().split("---")[1])
-        assert fm["status"] == "scheduled"
+        assert fm["status"] == "ghl-pending"
         assert fm["ghl_post_id"] == "ghl-post-future"
 
-    def test_publishes_ready_post_immediate(self, tmp_path):
-        """Ready post with past publish_at → status=published after publish."""
+    def test_publishes_ready_post_immediate_as_draft(self, tmp_path):
+        """Ready post with past publish_at → still ghl-pending (draft for approval)."""
         brand_dir, post_file = self._make_brand_and_post(
             tmp_path, post_status="ready", publish_at=PAST_PUBLISH_AT
         )
@@ -293,9 +293,8 @@ class TestRunGhlPublisher:
 
         assert stats["published"] == 1
         fm = yaml.safe_load(post_file.read_text().split("---")[1])
-        assert fm["status"] == "published"
+        assert fm["status"] == "ghl-pending"
         assert fm["ghl_post_id"] == "ghl-post-now"
-        assert "published_at" in fm
 
     def test_writes_failed_on_publish_error(self, tmp_path):
         """When publish_with_retry returns None, writes status=failed."""

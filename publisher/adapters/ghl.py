@@ -116,7 +116,8 @@ class GHLAdapter(BaseAdapter):
         payload: dict = {
             "accountIds": account_ids,
             "content": copy_text,
-            "scheduledAt": post.publish_at,  # ISO 8601 with timezone
+            "scheduledAt": post.publish_at,  # ISO 8601 with timezone (preserved for GHL reference)
+            "status": "draft",  # Gate 2: land as draft for Dave's manual approval in GHL UI
             "type": "image" if image_url else "text",
         }
         if image_url:

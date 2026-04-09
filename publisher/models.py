@@ -19,7 +19,7 @@ from pydantic import BaseModel, Field, field_validator
 
 VALID_PLATFORMS = {"facebook", "linkedin", "gbp", "x", "instagram"}
 VALID_STATUSES = {
-    "draft", "ready", "scheduled", "published", "failed", "deferred", "video-pending"
+    "draft", "ready", "ghl-pending", "scheduled", "published", "failed", "deferred", "video-pending"
 }
 VALID_AUTHORS = {"dave", "velocitypoint"}
 
