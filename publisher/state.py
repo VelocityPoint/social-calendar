@@ -132,7 +132,7 @@ def write_ghl_post_result(
     Write GHL publish result back to post frontmatter (Step 5 / AC7).
 
     Sets:
-      - status → 'scheduled' | 'published' | 'failed'
+      - status → 'ghl-pending' | 'scheduled' | 'published' | 'failed'
       - ghl_post_id → GHL Social Planner post ID (on success)
       - published_at → ISO timestamp (on success)
       - error → last error message (on failure)

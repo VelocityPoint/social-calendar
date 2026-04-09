@@ -45,7 +45,7 @@ MOCK_POST_DATA = {
     "id": MOCK_POST_ID,
     "content": "Test post content",
     "scheduledAt": "2026-04-01T14:00:00-07:00",
-    "status": "scheduled",
+    "status": "draft",
 }
 
 MOCK_ERROR_401 = {"error": {"code": 401, "message": "Invalid token"}}
@@ -219,7 +219,7 @@ class TestPublish:
             assert "accountIds" in body
             assert body["accountIds"] == ["acc_li_001"]
 
-    def test_payload_contains_scheduled_at(self):
+    def test_payload_contains_scheduled_at_and_draft_status(self):
         adapter = make_adapter()
         post = make_post(publish_at="2026-04-01T14:00:00-07:00")
         resp = mock_response(200, {"id": MOCK_POST_ID})
@@ -230,6 +230,7 @@ class TestPublish:
             body = mock_req.call_args.kwargs.get("json", {})
             assert "scheduledAt" in body
             assert body["scheduledAt"] == "2026-04-01T14:00:00-07:00"
+            assert body["status"] == "draft"
 
     def test_payload_contains_content(self):
         adapter = make_adapter()

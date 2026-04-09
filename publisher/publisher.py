@@ -25,8 +25,8 @@ GHL mode differences from cron mode:
   - If --files is not given, detects changed files via `git diff HEAD~1 HEAD`
   - Only publishes posts with status: ready (not scheduled)
   - One file = one platform (single GHLAdapter call per file)
-  - On success: writes status=scheduled (or published if scheduled_at is in past),
-    ghl_post_id, published_at back to frontmatter
+  - On success: writes status=ghl-pending and ghl_post_id back to frontmatter
+    (post lands in GHL as draft — Dave approves in GHL Social Planner UI)
   - On failure: writes status=failed, error field
   - Uses GHLAdapter exclusively (no per-platform adapter registry lookup)
 
@@ -132,9 +132,8 @@ def run_ghl_publisher(
 
     Processes only files changed in the merge commit with status: ready.
     Each file = one platform. Calls GHLAdapter.publish(), writes back:
-      - status: scheduled (scheduled_at in future) or published (in past)
+      - status: ghl-pending (draft in GHL awaiting Dave's approval)
       - ghl_post_id
-      - published_at (if immediate)
       - error + status: failed (on exhausted retries)
 
     Args:
@@ -271,11 +270,9 @@ def run_ghl_publisher(
         )
 
         if ghl_post_id:
-            # Success: write back scheduled or published status
-            new_status = "published" if is_immediate else "scheduled"
+            # Success: write back ghl-pending (Gate 2 — draft in GHL awaiting Dave's approval)
+            new_status = "ghl-pending"
             published_at_str = None
-            if is_immediate:
-                published_at_str = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
             write_ghl_post_result(
                 file_path,
