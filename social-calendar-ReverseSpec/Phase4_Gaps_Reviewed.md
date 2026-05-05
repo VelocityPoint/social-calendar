@@ -72,6 +72,7 @@ Reviewed `Phase4_Gaps.md` for: severity discipline, evidence-trace completeness,
 ### Added findings (1, in I-3 review row)
 
 ### S2.9 — I-3 (Gate 1 author≠approver) is process-only, not code-enforced
+**Tracked:** #39 (combined with S3.15 + S4.1 OOS-recorded Mediums bundle)
 - **What.** Phase 3 I-3 requires Gate 1 to be operator-explicit: `status = ready` is set by the approver, not the author. At this snapshot, this is enforced by GitHub PR review process (a human merges, and presumably checks that the diff hand isn't from the same author). **No code rejects an author-self-approved `ready` transition.** A PR that flips `status: draft` to `status: ready` and is merged by the same person who authored both ends violates I-3 silently.
 - **Why we know.** Phase 3 review note on I-3 explicitly: "current implementation is process-based not code-based — flagged as a Phase 5 question whether code-level enforcement is desired." Phase 1 has no test asserting "rejects same-author-as-approver."
 - **Severity.** Medium.
@@ -128,3 +129,35 @@ By section (post-review, includes added S2.9):
 - **S3.3 severity normalized** to single Medium line (the High line was a stray cross-reference; covered by S1.2 / S3.11 / S4.2 already).
 - **Severity rollup updated** as above.
 - **All other findings unchanged.**
+
+---
+
+## Issue Tracking Map
+
+Cross-reference of every Phase 4 finding (in `Phase4_Gaps.md` + S2.9 added above) to its filed GitHub issue. Meta-tracker: **#25**.
+
+### Per-finding (Highs first)
+
+| Finding | Issue | Phase 5 Shape |
+|---------|-------|----------------|
+| S1.2 — status enum not canonical | #28 | B |
+| S1.3 — VP brand.yaml missing `ghl:` block (launch blocker) | #26 | A |
+| S1.4 — SR brand.yaml has `<account_id>` placeholders (launch blocker) | #27 | A |
+| S3.9 — VP brand.yaml inconsistency view (cross-ref of S1.3) | #30 | A |
+| S3.11 — `ghl-pending` artefact view (cross-ref of S1.2) | #31 | B |
+| S4.2 — schema rejects `ghl-pending` at PR / publisher writes at runtime | #32 | B |
+| S4.10 — composite launch hazard (Campaign 1 first publish) | #29 | A |
+| S5.3 — status-lifecycle drift cluster (cross-ref of S1.2) | #33 | B |
+
+### Bundled / clustered
+
+| Issue | Findings | Shape |
+|-------|----------|-------|
+| #34 | S1.1 + S1.10 + S2.7 + S3.1 + S3.7 + S5.1 + S3.13 — AC namespace divergence + coverage gaps | D |
+| #35 | S2.5 + S3.5 + S4.4 — RateLimitState wrong-path data-loss | C |
+| #36 | S2.8 + S4.11 + S5.9 — RateLimitState Pydantic v2 bug | L |
+| #37 | S4.5 + S4.6 + S4.7 + S5.7 — Lifecycle test coverage + paired-failure observability | F + J |
+| #38 | S2.1 + S3.2 + S3.3 + S3.12 + S5.2 + S5.5 + S5.6 + S5.11 — Cleanup sweep: stale docs + deprecated adapters + retry conventions + two-gate doc | E + H + I + K |
+| #39 | S2.9 (added above) + S3.15 + S4.1 — OOS-recorded Mediums | OOS |
+| #40 | S1.5 + S2.2 + S2.3 + S2.4 + S3.10 + S4.3 + S4.8 + S5.4 — Deprecated-adapter cleanup + retry-convention + AC12 | H + K + G |
+| #41 | S1.6 + S1.7 + S1.8 + S1.9 + S3.4 + S3.8 + S3.14 + S4.9 + S4.12 + S5.8 + S5.10 — Forward-pointer labelling + low-priority debt + OOS-recorded Lows | M + OOS |

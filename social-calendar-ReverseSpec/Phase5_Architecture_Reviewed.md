@@ -115,3 +115,26 @@ Original Phase 5 file: 493 lines, 5886 words. Slightly under prompt target (500�
 - **§7 Phase 2 Shape J clause:** added "deferral is risk-tolerable because notification-channel and work-item-substrate failures are independent — both failing simultaneously requires unrelated outages."
 - **§2.3 diagram:** "validates" arrow annotated as **temporal dependency** (validation passes before publish runs), not a runtime call.
 - **All other content unchanged.**
+
+---
+
+## Issue Tracking Map
+
+Cross-reference of Phase 5 resolution shapes (A–M + OOS) to filed GitHub issues. Meta-tracker: **#25**.
+
+| Shape | Name | Tracked issues |
+|-------|------|----------------|
+| **A** | Brand-Config Completion Gate | #26 (S1.3 VP), #27 (S1.4 SR), #29 (S4.10 composite), #30 (S3.9 inconsistency view) |
+| **B** | Status Lifecycle Canonical Source | #28 (S1.2), #31 (S3.11), #32 (S4.2), #33 (S5.3) |
+| **C** | State Persistence Path Reconciliation | #35 (S2.5 + S3.5 + S4.4) |
+| **D** | AC Identifier Registry | #34 (S1.1 + S1.10 + S2.7 + S3.1 + S3.7 + S5.1 + S3.13) |
+| **E** | Stale-Doc Sweep | #38 (combined cleanup-sweep bundle) |
+| **F** | Test Coverage for Lifecycle | #37 (combined with Shape J) |
+| **G** | Retry Convention (subset) | #40 (retry-convention cluster) |
+| **H** | Deprecated-Adapter Cleanup | #38 (cleanup-sweep), #40 (deprecated-adapter cluster) |
+| **I** | Two-Gate Documentation | #38 (cleanup-sweep) |
+| **J** | Paired-Side-Effect-Failure Observability | #37 |
+| **K** | Retry Convention | #38 (cleanup-sweep), #40 (retry-convention cluster) |
+| **L** | RateLimitState Pydantic v2 Bug Fix | #36 (S2.8 + S4.11 + S5.9) |
+| **M** | Forward-Pointer Labelling | #41 (low-priority + OOS bundle) |
+| **OOS** | Out-of-scope acks | #39 (Mediums OOS), #41 (Lows OOS) |
